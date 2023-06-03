@@ -16,7 +16,7 @@ class LocalNetwork(nn.Module):
         self.batch_size = 32
         self.num_heads = 16
         self.encoder_layers = 6
-        self.drouput = 0.1
+        self.dropout = 0.1
 
         self.num_image_patches = self.image_size // self.patch_size
         self.num_context_patches = self.context_size // self.patch_size
