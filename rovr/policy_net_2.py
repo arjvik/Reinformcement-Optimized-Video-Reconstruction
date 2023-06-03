@@ -35,6 +35,7 @@ class PolicyNetwork2(nn.Module):
         self.fc = nn.Linear(self.image_size**2 * self.num_channels, self.num_composed_frames)
 
     def forward(self, image, context, target):
+        print(f"the image's device is {image.device}!")
         image = self.patchify_image(image)
         context = self.patchify_context(context)
         for layer in self.context_encoder:
@@ -73,7 +74,7 @@ class ImagePositionalEncoding(nn.Module):
         self.positional_encoder = nn.Linear(1, self.patch_size**2 * self.num_channels)
     
     def forward(self, x):
-        positions = repeat(self.positional_encoder(torch.arange(self.num_image_patches**2).unsqueeze(1)), 'p s -> b p s', b=self.batch_size, p=self.num_image_patches**2)
+        positions = repeat(self.positional_encoder(torch.arange(self.num_image_patches**2).unsqueeze(1).to(device)), 'p s -> b p s', b=self.batch_size, p=self.num_image_patches**2)
         return x + positions
 
 class ContextPositionalEncoding(nn.Module):
@@ -91,8 +92,8 @@ class ContextPositionalEncoding(nn.Module):
         self.context_positional_encoder = nn.Linear(1, self.patch_size**2 * self.num_channels)
     
     def forward(self, x):
-        patch_positions = repeat(self.patch_positional_encoder(torch.arange(self.num_context_patches**2).unsqueeze(1)), 'p s -> b n p s', b=self.batch_size, n=self.num_context, p=self.num_context_patches**2)
-        context_positions = repeat(self.context_positional_encoder(torch.arange(self.num_context).unsqueeze(1)), 'n s -> b n p s', b=self.batch_size, n=self.num_context, p=self.num_context_patches**2)
+        patch_positions = repeat(self.patch_positional_encoder(torch.arange(self.num_context_patches**2).unsqueeze(1).to(device)), 'p s -> b n p s', b=self.batch_size, n=self.num_context, p=self.num_context_patches**2)
+        context_positions = repeat(self.context_positional_encoder(torch.arange(self.num_context).unsqueeze(1).to(device)), 'n s -> b n p s', b=self.batch_size, n=self.num_context, p=self.num_context_patches**2)
         return rearrange(x + patch_positions + context_positions, 'b n p s -> b p (n s)', b=self.batch_size, n=self.num_context, p=self.num_context_patches**2)
 
 class SelfAttentionBlock(nn.Module):
