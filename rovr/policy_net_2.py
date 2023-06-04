@@ -5,6 +5,9 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 import math
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(device)
+
 class PolicyNetwork2(nn.Module):
     def __init__(self):
         super(PolicyNetwork2, self).__init__()
@@ -35,15 +38,14 @@ class PolicyNetwork2(nn.Module):
         self.fc = nn.Linear(self.image_size**2 * self.num_channels, self.num_composed_frames)
 
     def forward(self, image, context, target):
-        print(f"the image's device is {image.device}!")
         image = self.patchify_image(image)
         context = self.patchify_context(context)
         for layer in self.context_encoder:
             context = layer(context) 
-        image = self.image_encoder(image)
+        image = self.image_encoder(image, image, image)
         for layer in self.decoder:
             image = layer(image, context)
-        image = rearrange(image, 'b p (h w c) -> b (h p w c)', b=self.batch_size, p=self.num_image_patches, h=self.patch_size, w=self.patch_size, c=self.num_channels)
+        image = rearrange(image, 'b p (h w c) -> b (h p w c)', b=self.batch_size, p=self.num_image_patches**2, h=self.patch_size, w=self.patch_size, c=self.num_channels)
         image = self.fc(image)
         image.scatter_(1, target, 0)
         image = F.softmax(image, dim=1)
@@ -74,7 +76,7 @@ class ImagePositionalEncoding(nn.Module):
         self.positional_encoder = nn.Linear(1, self.patch_size**2 * self.num_channels)
     
     def forward(self, x):
-        positions = repeat(self.positional_encoder(torch.arange(self.num_image_patches**2).unsqueeze(1).to(device)), 'p s -> b p s', b=self.batch_size, p=self.num_image_patches**2)
+        positions = repeat(self.positional_encoder(torch.arange(self.num_image_patches**2).float().unsqueeze(1).to(device)), 'p s -> b p s', b=self.batch_size, p=self.num_image_patches**2)
         return x + positions
 
 class ContextPositionalEncoding(nn.Module):
@@ -92,8 +94,8 @@ class ContextPositionalEncoding(nn.Module):
         self.context_positional_encoder = nn.Linear(1, self.patch_size**2 * self.num_channels)
     
     def forward(self, x):
-        patch_positions = repeat(self.patch_positional_encoder(torch.arange(self.num_context_patches**2).unsqueeze(1).to(device)), 'p s -> b n p s', b=self.batch_size, n=self.num_context, p=self.num_context_patches**2)
-        context_positions = repeat(self.context_positional_encoder(torch.arange(self.num_context).unsqueeze(1).to(device)), 'n s -> b n p s', b=self.batch_size, n=self.num_context, p=self.num_context_patches**2)
+        patch_positions = repeat(self.patch_positional_encoder(torch.arange(self.num_context_patches**2).float().unsqueeze(1).to(device)), 'p s -> b n p s', b=self.batch_size, n=self.num_context, p=self.num_context_patches**2)
+        context_positions = repeat(self.context_positional_encoder(torch.arange(self.num_context).float().unsqueeze(1).to(device)), 'n s -> b n p s', b=self.batch_size, n=self.num_context, p=self.num_context_patches**2)
         return rearrange(x + patch_positions + context_positions, 'b n p s -> b p (n s)', b=self.batch_size, n=self.num_context, p=self.num_context_patches**2)
 
 class SelfAttentionBlock(nn.Module):
@@ -104,7 +106,7 @@ class SelfAttentionBlock(nn.Module):
         self.layer_norm = nn.LayerNorm(hidden_dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, encoder_output_ignored):
+    def forward(self, x):
         x = self.layer_norm(x)
         x += self.dropout(self.attention(x, x, x))
         return x
@@ -143,8 +145,8 @@ class EncoderBlock(nn.Module):
         self.attention = SelfAttentionBlock(hidden_dim, num_heads, dropout)
         self.feed_forward = FeedForwardBlock(hidden_dim, dropout)
 
-    def forward(self, x, encoder_output_ignored):
-        x = x + self.attention(x, encoder_output_ignored)
+    def forward(self, x):
+        x = x + self.attention(x)
         x = x + self.feed_forward(x)
         return x
     
@@ -156,8 +158,8 @@ class DecoderBlock(nn.Module):
         self.cross_attention = CrossAttentionBlock(hidden_dim, num_heads, dropout)
         self.feed_forward = FeedForwardBlock(hidden_dim, dropout)
 
-    def forward(self, x, encoder_output, mask):
-        x = x + self.attention(x, x)
+    def forward(self, x, encoder_output):
+        x = x + self.attention(x)
         x = x + self.cross_attention(x, encoder_output)
         x = x + self.feed_forward(x)
         return x
@@ -178,12 +180,12 @@ class MultiHeadAttention(nn.Module):
         self.value = nn.Linear(hidden_dim, hidden_dim)
         # self.fc = nn.Linear(hidden_dim, hidden_dim)
 
-    def forward(self, x):
+    def forward(self, x, y, z):
         batch_size = x.size(0)
         
         query = self.query(x).view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
-        key = self.key(x).view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
-        value = self.value(x).view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        key = self.key(y).view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        value = self.value(z).view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
         
         attention_scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(self.head_dim)
         attention_probs = F.softmax(attention_scores, dim=-1)
