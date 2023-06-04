@@ -3,75 +3,83 @@ import os
 import numpy as np
 import torch
 from torchvision.transforms import functional as F
-from tqdm import tqdm
+from torch.utils.data import Dataset, DataLoader
+import random
 
-class VideoDataset(torch.utils.data.Dataset):
-    def __init__(self, folder, transform=None):
-        self.folder = folder
+class VideoDataset(Dataset):
+    def __init__(self, root_folder, transform=None):
+        self.root_folder = root_folder
         self.transform = transform
-        self.videos = os.listdir(folder)
-    
-    def corrupt_frame(self, frame):
-        # regular random mask logic
-        mask = np.ones_like(frame)
+        self.subfolders = sorted([d for d in os.listdir(root_folder) if os.path.isdir(os.path.join(root_folder, d))])
+
+    def corrupt_frame(self, frame, frame_index):
         h, w, _ = frame.shape
-        mask_x = np.random.randint(0, w-50)
-        mask_y = np.random.randint(0, h-50)
-        mask[mask_y:mask_y+50, mask_x:mask_x+50, :] = 0
+        mask = np.ones_like(frame)
+
+        section_height = h // 3
+        slice_width = w // 16
+
+        section_idx = frame_index // 16  # find the section index
+        slice_idx = frame_index % 16  # find the slice index within the section
+
+        raster_center_x = slice_idx * slice_width + slice_width // 2
+        raster_center_y = section_idx * section_height + section_height // 2
+
+        # apply random jitter to the center point
+        jitter_x = random.randint(-25, 25)
+        jitter_y = random.randint(-125, 125)
+        raster_center_x += jitter_x
+        raster_center_y += jitter_y
+
+        start_x = max(0, raster_center_x - 225 // 2)
+        end_x = min(w, start_x + 225)
+        start_y = max(0, raster_center_y - 125 // 2)
+        end_y = min(h, start_y + 125)
+
+        mask[start_y:end_y, start_x:end_x, :] = 0
         corrupted_frame = frame * mask
+
         return corrupted_frame, mask
-    
-    def __len__(self):
-        return len(self.videos)
-    
+
     def normalize(self, frame):
-        # normalize it in -1 to 1 range
         return (frame / 127.5) - 1
-    
+
+    def __len__(self):
+        return len(self.subfolders) * 2 # each folder corresponds to two videos
+
     def __getitem__(self, idx):
-        video_path = os.path.join(self.folder, self.videos[idx])
-        vidcap = cv2.VideoCapture(video_path)
+        subfolder = self.subfolders[idx // 2]
+        video_folder = os.path.join(self.root_folder, subfolder)
+        frames = sorted(os.listdir(video_folder))
         
-        frames = []
-        corrupted_frames = []
-        masks = []
-        i = 0
-        
-        while True:
-            success, frame = vidcap.read()
-            if not success:
-                break
+        left_video = []
+        right_video = []
+
+        for i in range(48):
+            frame_path = os.path.join(video_folder, frames[i])
+            frame = cv2.imread(frame_path)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame = cv2.resize(frame, (1024, 512))
             
-            # resize and crop to get 512x512
-            h, w, _ = frame.shape
-            new_size = min(h, w)
-            startx = w//2 - new_size//2
-            starty = h//2 - new_size//2
-            frame = frame[starty:starty+new_size, startx:startx+new_size]
-            frame = cv2.resize(frame, (512, 512))
+            left_frame, right_frame = np.split(frame, 2, axis=1) 
             
-            # corrupt the frame
-            corrupted_frame, mask = self.corrupt_frame(frame)
-            
+            corrupted_left, mask_left = self.corrupt_frame(left_frame, i)
+            corrupted_right, mask_right = self.corrupt_frame(right_frame, i)
+
             if self.transform is not None:
-                frame = self.transform(frame)
-                corrupted_frame = self.transform(corrupted_frame)
-                mask = self.transform(mask)
+                left_frame = self.transform(left_frame)
+                right_frame = self.transform(right_frame)
+                corrupted_left = self.transform(corrupted_left)
+                corrupted_right = self.transform(corrupted_right)
+
+            if idx % 2 == 0:
+                left_video.append((self.normalize(corrupted_left), self.normalize(left_frame), mask_left))
+            else:
+                right_video.append((self.normalize(corrupted_right), self.normalize(right_frame), mask_right))
+
+        if idx % 2 == 0:
+            corrupted_frames, frames, masks = zip(*left_video)
+        else:
+            corrupted_frames, frames, masks = zip(*right_video)
             
-            frames.append(self.normalize(frame))
-            corrupted_frames.append(self.normalize(corrupted_frame))
-            masks.append(mask)
-
-            i += 1
-            if i == 49:
-                break
-                
-        if i < 49:
-            raise Exception(f"video {self.videos[idx]} has less than 49 frames!")
-        
-        return torch.stack(corrupted_frames), torch.stack(frames), torch.stack(masks)
-
-    def load(self):
-        print('loading videos... hang tight!')
-        for i in tqdm(range(len(self.videos))):
-            self.__getitem__(i)
+        return torch.from_numpy(np.array(corrupted_frames)).permute(0, 3, 1, 2), torch.from_numpy(np.array(frames)).permute(0, 3, 1, 2), torch.from_numpy(np.array(masks)).permute(0, 3, 1, 2)
