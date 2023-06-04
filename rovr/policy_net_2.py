@@ -35,7 +35,8 @@ class PolicyNetwork2(nn.Module):
         self.decoder = nn.ModuleList(
             [DecoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.encoder_layers)]
         )
-        self.fc = nn.Linear(self.image_size**2 * self.num_channels, self.num_composed_frames)
+        #goes to -1 b/c the first frame is filler
+        self.fc = nn.Linear(self.image_size**2 * self.num_channels, self.num_composed_frames-1)
 
     def forward(self, image, context, target):
         image = self.patchify_image(image)
