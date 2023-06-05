@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import cv2
 
 class ROVR(nn.Module):
-    def __init__(self, actor1, critic1, actor2, critic2, video_encoder, history_encoder, local_net, vid_length, time_steps):
+    def __init__(self, actor1, critic1, actor2, critic2, video_encoder, history_encoder, local_net, vid_length, time_steps, n_updates_per_ppo = 5):
         self.actor1 = actor1
         self.critic1 = critic1
         self.actor2 = actor2
@@ -15,6 +15,7 @@ class ROVR(nn.Module):
 
         self.vid_length = vid_length
         self.time_steps = time_steps
+        self.num_updates_per_ppo = n_updates_per_ppo
 
         self.lpips = lpips.LPIPS(net='alex')
         self.video_encoder = video_encoder
@@ -25,6 +26,7 @@ class ROVR(nn.Module):
         self.actor2_optimizer = torch.optim.Adam(self.actor2.parameters(), lr=1e-4)
         self.critic2_optimizer = torch.optim.Adam(self.critic2.parameters(), lr=1e-4)
         self.local_net_optimizer = torch.optim.Adam(self.local_net.parameters(), lr=1e-4)
+
 
         self.logger = {
                 'actor1_losses': [],
@@ -55,6 +57,7 @@ class ROVR(nn.Module):
         log_prob_2 = []
         rewards = []
         org_optical_flow = self.calculate_optical_flow(org_video)
+        corrupted_optical_flow = self.calculate_optical_flow(video)
         reconstructed_video = video
         for i in range(self.time_steps):
             #step through every model and get to image, conditioning to feed into local_net
@@ -64,13 +67,16 @@ class ROVR(nn.Module):
 
             image = []
             conditioning = []
+            #rewards are ~0-1 for perceptual loss
             y_hat, reward = self.train_local_network(image, conditioning, org_video["TARGET NUMBER"])
             reconstructed_video["TARGET NUMBER"] = y_hat
             rewards.append(-(reward - curr_perceptual_loss["TARGET NUMBER"]))
             curr_perceptual_loss[i] = reward
         
         optical_flow = self.calculate_optical_flow(reconstructed_video)
-        rewards[-1] = abs(optical_flow - org_optical_flow)
+        #increase distance from corrupted optical flow and decrease distance from original optical flow
+        rewards[-1] = abs(optical_flow - corrupted_optical_flow) - abs(org_optical_flow - optical_flow)
+    
         rtg = self.compute_rewards_to_go(rewards)
         
         return obs_1, obs_2, acs_1, ac_2, log_prob_1, log_prob_2, rtg
@@ -98,7 +104,7 @@ class ROVR(nn.Module):
         return rewards_to_go
 
 
-    def ppo(self, net_num, info, n_updates_per_iteration=5):                                                                
+    def ppo(self, net_num, info):                                                                
         if net_num == 1:
             actor = self.actor1
             critic = self.critic1
@@ -121,7 +127,7 @@ class ROVR(nn.Module):
         A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
 
 
-        for _ in range(n_updates_per_iteration):                                                    
+        for _ in range(self.num_updates_per_ppo):                                                    
             V = critic(obs)
             curr_log_prob = actor.get_log_prob(obs, acs)
             ratio = torch.exp(curr_log_prob - log_prob)
