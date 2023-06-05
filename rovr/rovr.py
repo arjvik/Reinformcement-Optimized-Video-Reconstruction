@@ -212,6 +212,9 @@ class ROVR(nn.Module):
 
             rtg = self.compute_rewards_to_go(rewards, lstm_patches.device)
             #### IF WE GET DATAPARALLEL DEVICE ERROR THIS IS THE CULPRIT
+            
+            #RESET LSTM STATES:
+            self.history_encoder.reset_hidden_states()
 
             return obs_1, obs_2, acs_1, acs_2, log_prob_1, log_prob_2, rtg
 
