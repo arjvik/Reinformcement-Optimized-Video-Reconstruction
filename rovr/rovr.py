@@ -3,7 +3,7 @@ import lpips
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.transforms.functional as F
+import torchvision.transforms.functional as Ft
 from torchvision.models.optical_flow import raft_small
 
 class ROVR(nn.Module):
@@ -254,7 +254,7 @@ class ROVR(nn.Module):
         model = model.eval().cuda() 
 
         def preprocess_image(image_tensor):
-            image_tensor = F.resize(image_tensor, (256, 256))
+            image_tensor = Ft.resize(image_tensor, (256, 256))
             return image_tensor.cuda()
         
         b, _, _, _ = frames.shape
