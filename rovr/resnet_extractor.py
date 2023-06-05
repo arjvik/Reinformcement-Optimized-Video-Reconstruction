@@ -40,7 +40,6 @@ class ResnetFeatureExtractor(torch.nn.Module):
         return (idx // 5 * 16, idx % 5 * 16)
 
     def encode(self, x):
-        print("DEVICE", x.device)
         local_device = x.device
         x = self.preprocessing(x).unsqueeze(0).to(local_device)
         feature = self.resnet(x)
@@ -48,8 +47,6 @@ class ResnetFeatureExtractor(torch.nn.Module):
         return feature
 
     def insert_encoded_frame_batch(self, indices, full_frame_batch, encoded_frame_batch):
-        
-        print("DEVICE", full_frame_batch.device)
         
         for b in range(full_frame_batch.size(0)):  # Iterate over the batch dimension
             encoded_frame = self.encode(full_frame_batch[b])  # Encode the full frame into a 3x16x16 representation
