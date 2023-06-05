@@ -8,7 +8,7 @@ from einops import rearrange
 import math
 
 class PolicyNetwork1(nn.Module):
-    def __init__(self):
+    def __init__(self, is_critic=False):
         super(PolicyNetwork1, self).__init__()
         self.num_composed_frames = 25
         self.image_size = int(math.sqrt(self.num_composed_frames) * 16)
@@ -23,6 +23,8 @@ class PolicyNetwork1(nn.Module):
         self.num_image_patches = self.image_size // self.patch_size
         self.num_context_patches = self.context_size // self.patch_size
 
+        self.is_critic = is_critic
+
         self.image_positional_encoding = ImagePositionalEncoding(num_image_patches=self.num_image_patches, patch_size=self.patch_size, num_channels=self.num_channels, batch_size=self.batch_size)
         self.context_positional_encoding = ImagePositionalEncoding(num_image_patches=self.num_context_patches, patch_size=self.patch_size, num_channels=self.num_channels, batch_size=self.batch_size)
 
@@ -32,7 +34,10 @@ class PolicyNetwork1(nn.Module):
         self.decoder = nn.ModuleList(
             [DecoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.encoder_layers)]
         )
-        self.fc = nn.Linear(self.image_size**2 * self.num_channels, self.num_composed_frames)
+        if not self.is_critic:
+            self.fc = nn.Linear(self.image_size**2 * self.num_channels, self.num_composed_frames)
+        else:
+            self.fc = nn.Linear(self.image_size**2 * self.num_channels, 1)
 
     def forward(self, image, context):
         image = self.patchify_image(image)
@@ -42,9 +47,12 @@ class PolicyNetwork1(nn.Module):
         for layer in self.decoder:
             image = layer(image, context)
         image = rearrange(image, 'b p (h w c) -> b (h p w c)', b=self.batch_size, p=self.num_image_patches**2, h=self.patch_size, w=self.patch_size, c=self.num_channels)
-        image = self.fc(image)
-        image = F.softmax(image, dim=1)
-        return torch.topk(image, 2, dim=1)
+        if not self.is_critic:
+            probs = F.softmax(self.fc(image), dim=1)
+            return torch.argmax(probs, dim=1)
+        else:
+            score = self.fc(image)
+            return score.squeeze(1)
     
     def patchify_image(self, img):
         patches = rearrange(img, 'b (hp ph) (wp pw) c -> b (hp wp) (ph pw c)', ph=self.patch_size, pw=self.patch_size)
