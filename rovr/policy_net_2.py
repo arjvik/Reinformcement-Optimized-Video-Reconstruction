@@ -18,8 +18,13 @@ class PolicyNetwork2(nn.Module):
         self.num_channels = 3
         self.batch_size = 1
         self.num_heads = 4
-        self.encoder_layers = 3
-        self.decoder_layers = 6
+        if not self.is_critic:
+            self.encoder_layers = 3
+            self.decoder_layers = 6
+        else:
+            self.encoder_layers = 2
+            self.decoder_layers = 4
+
         self.dropout = 0.1
 
         self.num_image_patches = self.image_size // self.patch_size

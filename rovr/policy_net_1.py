@@ -17,7 +17,12 @@ class PolicyNetwork1(nn.Module):
         self.num_channels = 3
         self.batch_size = 1
         self.num_heads = 16
-        self.encoder_layers = 6
+        if not self.is_critic:
+            self.encoder_layers = 2
+            self.decoder_layers = 4
+        else:
+            self.encoder_layers = 2
+            self.decoder_layers = 3
         self.dropout = 0.1
 
         self.num_image_patches = self.image_size // self.patch_size
@@ -32,7 +37,7 @@ class PolicyNetwork1(nn.Module):
             [EncoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.encoder_layers)]
         )
         self.decoder = nn.ModuleList(
-            [DecoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.encoder_layers)]
+            [DecoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.decoder_layers)]
         )
         if not self.is_critic:
             self.fc = nn.Linear(self.image_size**2 * self.num_channels, self.num_composed_frames)
