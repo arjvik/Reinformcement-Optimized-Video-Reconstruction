@@ -235,7 +235,7 @@ class ROVR(nn.Module):
 
         for _ in range(self.num_updates_per_ppo):                                                    
             V = critic(*obs)
-            curr_log_prob = actor.logprob(obs, acs)
+            curr_log_prob = actor.logprob(*obs, acs)
             ratio = torch.exp(curr_log_prob - log_prob)
 
             L1 = ratio * A_k
