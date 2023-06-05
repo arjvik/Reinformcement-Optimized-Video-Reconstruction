@@ -101,7 +101,6 @@ class ROVR(nn.Module):
         curr_perceptual_loss = self.lpips(video.squeeze(0).float(), org_video.squeeze(0).float(), normalize=True)
         
         obs_1 = []
-        obs_2 = []
         acs_1 = []
         ac_2 = []
         log_prob_1 = []
@@ -118,7 +117,7 @@ class ROVR(nn.Module):
             
             pn_1_top_frame, pn_1_log_prob = self.actor1(encoded_frames, lstm_token)
             
-            obs_1.append((encoded_frames, lstm_token))
+            obs_1.append(encoded_frames, lstm_token)
             acs_1.append(pn_1_top_frame)
             log_prob_1.append(pn_1_log_prob)
 
@@ -164,13 +163,12 @@ class ROVR(nn.Module):
             rewards.append(-(reward - curr_perceptual_loss[target_frame_index]))
             curr_perceptual_loss[i] = reward
         #stack all of our lists
-        obs_1 = torch.stack(obs_1)
-        obs_2 = torch.stack(obs_2)
+        obs_1 = (torch.stack([obs[0] for obs in obs_1]), torch.stack([obs[1] for obs in obs_1]))
+        obs_2 = (torch.stack([obs[0] for obs in obs_2]), torch.stack([obs[1] for obs in obs_2]), torch.stack([obs[2] for obs in obs_2]))
         acs_1 = torch.stack(acs_1)
         ac_2 = torch.stack(ac_2)
         log_prob_1 = torch.stack(log_prob_1)
         log_prob_2 = torch.stack(log_prob_2)
-        rewards = torch.stack(rewards)
 
         optical_flow = self.calculate_optical_flow(video.squeeze(0))
         #increase distance from corrupted optical flow and decrease distance from original optical flow
@@ -191,17 +189,17 @@ class ROVR(nn.Module):
         return y_hat, loss.detach()
 
     #this function calculates rewards to go from marginal rewards
-    def compute_rewards_to_go(self, rewards, gamma=1):
-        b, t = rewards.size()  # Get the batch size and sequence length
-        rewards_to_go = torch.zeros_like(rewards)  # Initialize a tensor of rewards-to-go with the same shape as rewards
+    def compute_rewards_to_go(rewards, gamma=1):
+        b = len(rewards)  # Get the length of the sequence
+        rewards_to_go_list = []  # Initialize a list to store rewards-to-go
 
-        for i in range(b):  # Iterate through each batch
-            reward_to_go = 0  # Initialize the reward-to-go for the last step as 0
-            for j in reversed(range(t)):  # Iterate through the rollout in reverse order (from the last step to the first step)
-                reward_to_go = rewards[i, j] + gamma * reward_to_go  # Calculate the reward-to-go for the current step
-                rewards_to_go[i, j] = reward_to_go  # Store the calculated reward-to-go in the rewards_to_go tensor
+        reward_to_go = 0  # Initialize the reward-to-go for the last step as 0
+        for i in reversed(range(b)):  # Iterate through the sequence in reverse order
+            reward_to_go = rewards[i] + gamma * reward_to_go  # Calculate the reward-to-go for the current step
+            rewards_to_go_list.append(reward_to_go)  # Append the calculated reward-to-go to the list
 
-        return rewards_to_go
+        rewards_to_go_tensor = torch.tensor(rewards_to_go_list).view(-1, 1)  # Convert the list to a tensor and reshape it to b x 1
+        return rewards_to_go_tensor
 
     #this function runs ppo on the selected network
     def ppo(self, net_num, info):                                                                
