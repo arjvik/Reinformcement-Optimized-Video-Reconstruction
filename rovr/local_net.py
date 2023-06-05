@@ -7,14 +7,15 @@ from einops import rearrange
 class LocalNetwork(nn.Module):
     def __init__(self):
         super(LocalNetwork, self).__init__()
-        self.image_size = 512
-        self.context_size = 256
-        self.patch_size = 32
+        self.image_size = 256
+        self.context_size = 128
+        self.patch_size = 16
         self.num_channels = 3
         self.num_context = 2
         self.batch_size = 32
-        self.num_heads = 16
-        self.encoder_layers = 6
+        self.num_heads = 4
+        self.encoder_layers = 3
+        self.decoder_layers = 6
         self.dropout = 0.1
 
         self.num_image_patches = self.image_size // self.patch_size
@@ -27,9 +28,9 @@ class LocalNetwork(nn.Module):
             [EncoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.encoder_layers)]
         )
         self.decoder = nn.ModuleList(
-            [DecoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.encoder_layers)]
+            [DecoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.decoder_layers)]
         )
-        self.fc = nn.Linear(self.image_size**2 * self.num_channels, self.image_size**2 * self.num_channels)
+        self.fcn = nn.Conv2d(in_channels=self.num_channels, out_channels=self.num_channels, kernel_size=2*(self.patch_size+1)+1, padding=self.patch_size+1, padding_mode='replicate')
 
     def forward(self, image, context):
         image = self.patchify_image(image)
@@ -38,18 +39,14 @@ class LocalNetwork(nn.Module):
             context = layer(context)
         for layer in self.decoder:
             image = layer(image, context)
-        image = rearrange(image, 'b p (ph pw c) -> b (p ph pw c)', b=self.batch_size, p=self.num_image_patches**2, ph=self.patch_size, pw=self.patch_size, c=self.num_channels)
-        image = self.fc(image)
-        return rearrange(image, 'b (h w c) -> b h w c', b=self.batch_size, h=self.image_size, w=self.image_size)
+        image = rearrange(image, 'b (hp wp) (ph pw c) -> b (hp ph) (wp pw) c', b=self.batch_size, hp=self.num_image_patches, wp=self.num_image_patches, ph=self.patch_size, pw=self.patch_size, c=self.num_channels)
+        image = self.fcn(image.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+        return image
     
     def patchify_image(self, img):
-        # input: b x 512 x 512 x 3
-        # output: b x 256 x 3072
         patches = rearrange(img, 'b (hp ph) (wp pw) c -> b (hp wp) (ph pw c)', ph=self.patch_size, pw=self.patch_size)
         return self.image_positional_encoding(patches)
     
     def patchify_context(self, img):
-        # input: b x 2 x 256 x 256 x 3
-        # output: b x 128 x 3072
         patches = rearrange(img, 'b n (hp ph) (wp pw) c -> b (n hp wp) (ph pw c)', ph=self.patch_size, pw=self.patch_size)
         return self.context_positional_encoding(patches)

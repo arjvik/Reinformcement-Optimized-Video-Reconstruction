@@ -17,10 +17,11 @@ class ImagePositionalEncoding(nn.Module):
         self.positional_encoder = nn.Linear(1, self.patch_size**2 * self.num_channels)
     
     def forward(self, x):
+        local_device = x.device
         positions = repeat(self.positional_encoder(torch.arange(self.num_image_patches**2)
                                                         .float()
                                                         .unsqueeze(1)
-                                                        .to(next(self.positional_encoder.parameters()).device)),
+                                                        .to(local_device)),
                            'p s -> b p s', b=self.batch_size, p=self.num_image_patches**2)
         return x + positions
 
@@ -39,15 +40,16 @@ class ContextPositionalEncoding(nn.Module):
         self.context_positional_encoder = nn.Linear(1, self.patch_size**2 * self.num_channels)
     
     def forward(self, x):
+        local_device = x.device
         patch_positions = repeat(self.patch_positional_encoder(torch.arange(self.num_context_patches**2)
                                                                     .float()
                                                                     .unsqueeze(1)
-                                                                    .to(next(self.patch_positional_encoder.parameters()).device)),
+                                                                    .to(local_device)),
                                  'p s -> b n p s', b=self.batch_size, n=self.num_context, p=self.num_context_patches**2)
         context_positions = repeat(self.context_positional_encoder(torch.arange(self.num_context)
                                                                         .float()
                                                                         .unsqueeze(1)
-                                                                      .to(next(self.context_positional_encoder.parameters()).device)),
+                                                                      .to(local_device)),
                                    'n s -> b n p s', b=self.batch_size, n=self.num_context, p=self.num_context_patches**2)
         return x + rearrange(patch_positions + context_positions, 'b n p s -> b (n p) s')
 
