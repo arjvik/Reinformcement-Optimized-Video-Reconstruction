@@ -60,7 +60,7 @@ class SelfAttentionBlock(nn.Module):
 
     def forward(self, x):
         x = self.layer_norm(x)
-        x += self.attention(x, x, x)[0]
+        x = x + self.attention(x, x, x)[0]
         return x
 
 class CrossAttentionBlock(nn.Module):
@@ -72,7 +72,7 @@ class CrossAttentionBlock(nn.Module):
 
     def forward(self, x, encoder_output):
         x = self.layer_norm(x)
-        x += self.attention(x, encoder_output, encoder_output)[0]
+        x = x + self.attention(x, encoder_output, encoder_output)[0]
         return x
 
 class FeedForwardBlock(nn.Module):

@@ -60,10 +60,9 @@ class PolicyNetwork1(nn.Module):
         if not self.is_critic:
             probs = logits.softmax(dim=1)
             maxes = probs.max(dim=1)
-            return maxes.indices, maxes.values.log()
+            return maxes.indices.detach(), maxes.values.log().detach()
         else:
-            score = self.fc(logits)
-            return score.squeeze(1)
+            return logits.squeeze(1)
     
     def logprob(self, image, context, action):
         if self.is_critic:

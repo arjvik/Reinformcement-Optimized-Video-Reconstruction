@@ -61,12 +61,13 @@ class PolicyNetwork2(nn.Module):
     def forward(self, image, context, target):
         if not self.is_critic:
             logits = self.compute_logits(image, context, target)
+            print(f"SCATTERED {target.shape=} {logits.shape=}")
             logits.scatter_(1, target, 0)
             probs = F.softmax(logits, dim=1)
             print("PROBABILITIES", probs.shape)
             topk = torch.topk(probs, k=2, dim=1)
             logprob = topk.values.log().sum(1) + math.log(2)
-            return topk.indices, logprob
+            return topk.indices.detach(), logprob.detach()
         else:
             logits = self.compute_logits(image, context, target)
             return logits.squeeze(1) # not really logits
@@ -78,8 +79,8 @@ class PolicyNetwork2(nn.Module):
         logits.scatter_(1, target, 0)
         probs = F.softmax(logits, dim=1)
         pairedprobs = rearrange(torch.matmul(probs.unsqueeze(2), probs.unsqueeze(1)), 'b i j -> b (i j)', i=self.output_size, j=self.output_size)
-        action = action[:, 0]*self.output_classification_head_size+action[:, 1]
-        return pairedprobs.gather(1, action.unsqueeze(1)).log().sum(1) + torch.log(2)
+        action = action[:, 0]*self.output_size+action[:, 1]
+        return pairedprobs.gather(1, action.unsqueeze(1)).log().sum(1) + 0.69314
     
     def patchify_image(self, img):
         patches = rearrange(img, 'b c (hp ph) (wp pw) -> b (hp wp) (c ph pw)', ph=self.patch_size, pw=self.patch_size)

@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from einops import rearrange
+
 class ActionLSTM(nn.Module):
     def __init__(self, hidden_dim, num_layers, batch_size):
         super(ActionLSTM, self).__init__()
@@ -16,20 +18,22 @@ class ActionLSTM(nn.Module):
 
     def forward(self, action, new_tensor):
         
+        
         local_device = action.device
         
         self.hx = self.hx.to(local_device)
         self.cx = self.cx.to(local_device)
         
+                
         action = action.float() / 48
-        new_tensor = new_tensor.view(new_tensor.size(0), -1)  # flatten the new tensor
+        new_tensor = rearrange(new_tensor, 'b n c ph pw -> b (n c ph pw)') # flatten the new tensor
 
         input_tensor = torch.cat([action, new_tensor], dim=1)  # concatenate action and new_tensor along the second dimension
 
         self.hx, self.cx = self.lstm(input_tensor, (self.hx, self.cx))
 
         out = self.fc(self.hx)
-        out = out.view(-1, 3, 80, 80)  # channel first
+        out = rearrange(out, 'b (c ph pw) -> b c ph pw', ph=80, pw=80) 
             
         return out
 
