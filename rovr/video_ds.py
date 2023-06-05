@@ -51,18 +51,20 @@ class VideoDataset(Dataset):
         subfolder = self.subfolders[idx // 2]
         video_folder = os.path.join(self.root_folder, subfolder)
         frames = sorted(os.listdir(video_folder))
-        
+
         left_video = []
         right_video = []
 
-        for i in range(48):
+        for i in range(25):
             frame_path = os.path.join(video_folder, frames[i])
             frame = cv2.imread(frame_path)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame = cv2.resize(frame, (1024, 512))
-            
+            frame = cv2.resize(frame, (1024, 512)) # resize the frame to 1024x512
+
             left_frame, right_frame = np.split(frame, 2, axis=1) 
-            
+            left_frame = cv2.resize(left_frame, (256, 256)) # resize the left frame to 256x256
+            right_frame = cv2.resize(right_frame, (256, 256)) # resize the right frame to 256x256
+
             corrupted_left, mask_left = self.corrupt_frame(left_frame, i)
             corrupted_right, mask_right = self.corrupt_frame(right_frame, i)
 
@@ -81,5 +83,5 @@ class VideoDataset(Dataset):
             corrupted_frames, frames, masks = zip(*left_video)
         else:
             corrupted_frames, frames, masks = zip(*right_video)
-            
+
         return torch.from_numpy(np.array(corrupted_frames)).permute(0, 3, 1, 2), torch.from_numpy(np.array(frames)).permute(0, 3, 1, 2), torch.from_numpy(np.array(masks)).permute(0, 3, 1, 2)
