@@ -3,7 +3,8 @@ import lpips
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-import cv2
+import torchvision.transforms.functional as F
+from torchvision.models.optical_flow import raft_small
 
 class ROVR(nn.Module):
     def __init__(self, actor1, critic1, actor2, critic2, video_encoder, history_encoder, local_net, vid_length, time_steps, n_updates_per_ppo = 5):
@@ -248,25 +249,35 @@ class ROVR(nn.Module):
             critic_losses.append(critic_loss.detach())
 
     #this function calculates the optical flow of a video
-    def calculate_optical_flow(self, images):
-        images = images.numpy().transpose(0, 2, 3, 1)
-        prev_gray = cv2.cvtColor(images[0], cv2.COLOR_RGB2GRAY)
+    def calculate_optical_flow(self, frames):
+        model = raft_small(pretrained=True)
+        model = model.eval().cuda() 
 
-        total_magnitude = 0
-        frame_count = 0
+        def preprocess_image(image_tensor):
+            image_tensor = F.resize(image_tensor, (256, 256))
+            return image_tensor.cuda()
+        
+        b, _, _, _ = frames.shape
 
-        for i in range(1, len(images)):
-            gray = cv2.cvtColor(images[i], cv2.COLOR_RGB2GRAY)
+        # Preprocess frames
+        frames_preprocessed = [preprocess_image(frames[i]) for i in range(b)]
 
-            flow = cv2.calcOpticalFlowFarneback(prev_gray, gray, None, pyr_scale=0.5, levels=5, winsize=11, iterations=5, poly_n=5, poly_sigma=1.1, flags=0)
+        # Calculate optical flows
+        flows = []
+        for i in range(b - 1):
+            with torch.no_grad():
+                flow = model(frames_preprocessed[i], frames_preprocessed[i + 1])
+                flows.append(flow[-1])
 
-            magnitude, _ = cv2.cartToPolar(flow[..., 0], flow[..., 1])
-            total_magnitude += np.sum(magnitude)
-            frame_count += 1
-            
-            prev_gray = gray
+        # Calculate scalar magnitudes
+        scalar_magnitudes = []
+        for flow in flows:
+            magnitude = torch.sqrt(torch.sum(flow**2, dim=[1, 2, 3]))  # Scalar magnitude
+            scalar_magnitudes.append(magnitude)
 
-        average_magnitude = total_magnitude / frame_count
-        return average_magnitude
+        # Add scalar magnitudes together
+        total_magnitude = torch.sum(torch.stack(scalar_magnitudes))
+
+        return total_magnitude.item()
     
     
