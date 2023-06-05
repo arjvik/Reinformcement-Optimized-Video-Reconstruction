@@ -47,7 +47,7 @@ class ROVR(nn.Module):
         self.ppo(2, (obs_2, ac_2, log_prob_2, rtg))
         self.ppo(1, (obs_1, acs_1, log_prob_1, rtg))
 
-    def forward(self, video):
+    def test(self, video):
         b, s, c, h, w = video.shape
 
         local_device = video.device
@@ -100,7 +100,7 @@ class ROVR(nn.Module):
             
         
         
-    def rollout(self, video, org_video):
+    def forward(self, video, org_video):
         b, s, c, h, w = video.shape
         curr_perceptual_loss = self.lpips(video.squeeze(0).float(), org_video.squeeze(0).float(), normalize=True)
         
@@ -111,8 +111,8 @@ class ROVR(nn.Module):
         log_prob_2 = []
         rewards = []
  
-        org_optical_flow = self.calculate_optical_flow(org_video.squeeze(0))
-        corrupted_optical_flow = self.calculate_optical_flow(video.squeeze(0))
+        org_optical_flow = self.calculate_optical_flow(org_video.squeeze(0).float())
+        corrupted_optical_flow = self.calculate_optical_flow(video.squeeze(0).float())
 
         local_device = video.device
 
@@ -178,7 +178,7 @@ class ROVR(nn.Module):
         log_prob_1 = torch.stack(log_prob_1)
         log_prob_2 = torch.stack(log_prob_2)
 
-        optical_flow = self.calculate_optical_flow(video.squeeze(0))
+        optical_flow = self.calculate_optical_flow(video.squeeze(0).float())
         #increase distance from corrupted optical flow and decrease distance from original optical flow
         rewards[-1] = abs(optical_flow - corrupted_optical_flow) - abs(org_optical_flow - optical_flow)
     
@@ -273,7 +273,7 @@ class ROVR(nn.Module):
         flows = []
         for i in range(b - 1):
             with torch.no_grad():
-                flow = model(frames_preprocessed[i], frames_preprocessed[i + 1])
+                flow = model(frames_preprocessed[i].unsqueeze(0).float(), frames_preprocessed[i + 1].unsqueeze(0).float())
                 flows.append(flow[-1])
 
         # Calculate scalar magnitudes
