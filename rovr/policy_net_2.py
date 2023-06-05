@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from common_layers import EncoderBlock, DecoderBlock, ImagePositionalEncoding, ContextPositionalEncoding
+from common_layers import EncoderBlock, DecoderBlock, ImagePositionalEncoding
 
 from einops import rearrange
 import math
@@ -16,7 +16,6 @@ class PolicyNetwork2(nn.Module):
         self.patch_size = 16
         self.image_size = int(math.sqrt(self.num_composed_frames) * self.patch_size)
         self.num_channels = 3
-        self.batch_size = 1
         self.num_heads = 4
         self.is_critic = is_critic
         
@@ -34,8 +33,8 @@ class PolicyNetwork2(nn.Module):
 
 
 
-        self.image_positional_encoding = ImagePositionalEncoding(num_image_patches=self.num_image_patches, patch_size=self.patch_size, num_channels=self.num_channels, batch_size=self.batch_size)
-        self.context_positional_encoding = ImagePositionalEncoding(num_image_patches=self.num_context_patches, patch_size=self.patch_size, num_channels=self.num_channels, batch_size=self.batch_size)
+        self.image_positional_encoding = ImagePositionalEncoding(num_image_patches=self.num_image_patches, patch_size=self.patch_size, num_channels=self.num_channels)
+        self.context_positional_encoding = ImagePositionalEncoding(num_image_patches=self.num_context_patches, patch_size=self.patch_size, num_channels=self.num_channels)
 
         self.context_encoder = nn.ModuleList(
             [EncoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.encoder_layers)]
@@ -55,7 +54,7 @@ class PolicyNetwork2(nn.Module):
             context = layer(context)
         for layer in self.decoder:
             image = layer(image, context)
-        image = rearrange(image, 'b (hp wp) (c ph pw) -> b (c hp ph wp pw)', b=self.batch_size, hp=self.num_image_patches, wp=self.num_image_patches, ph=self.patch_size, pw=self.patch_size, c=self.num_channels)
+        image = rearrange(image, 'b (hp wp) (c ph pw) -> b (c hp ph wp pw)', hp=self.num_image_patches, wp=self.num_image_patches, ph=self.patch_size, pw=self.patch_size, c=self.num_channels)
         logits = self.fc(image)
         return logits
 
@@ -78,7 +77,7 @@ class PolicyNetwork2(nn.Module):
         logits = self.compute_logits(image, context, target)
         logits.scatter_(1, target, 0)
         probs = F.softmax(logits, dim=1)
-        pairedprobs = torch.matmul(probs.unsqueeze(2), probs.unsqueeze(1)).reshape(self.batch_size, -1)
+        pairedprobs = rearrange(torch.matmul(probs.unsqueeze(2), probs.unsqueeze(1)), 'b i j -> b (i j)', i=self.output_size, j=self.output_size)
         action = action[:, 0]*self.output_classification_head_size+action[:, 1]
         return pairedprobs.gather(1, action.unsqueeze(1)).log().sum(1) + torch.log(2)
     

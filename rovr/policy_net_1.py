@@ -15,7 +15,6 @@ class PolicyNetwork1(nn.Module):
         self.context_size = 80
         self.patch_size = 16
         self.num_channels = 3
-        self.batch_size = 1
         self.num_heads = 16
         self.is_critic = is_critic
         
@@ -32,8 +31,8 @@ class PolicyNetwork1(nn.Module):
 
         
 
-        self.image_positional_encoding = ImagePositionalEncoding(num_image_patches=self.num_image_patches, patch_size=self.patch_size, num_channels=self.num_channels, batch_size=self.batch_size)
-        self.context_positional_encoding = ImagePositionalEncoding(num_image_patches=self.num_context_patches, patch_size=self.patch_size, num_channels=self.num_channels, batch_size=self.batch_size)
+        self.image_positional_encoding = ImagePositionalEncoding(num_image_patches=self.num_image_patches, patch_size=self.patch_size, num_channels=self.num_channels)
+        self.context_positional_encoding = ImagePositionalEncoding(num_image_patches=self.num_context_patches, patch_size=self.patch_size, num_channels=self.num_channels)
 
         self.context_encoder = nn.ModuleList(
             [EncoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.encoder_layers)]
@@ -53,7 +52,7 @@ class PolicyNetwork1(nn.Module):
             context = layer(context)
         for layer in self.decoder:
             image = layer(image, context)
-        image = rearrange(image, 'b (hp wp) (c ph pw) -> b (c hp ph wp pw)', b=self.batch_size, hp=self.num_image_patches, wp=self.num_image_patches, ph=self.patch_size, pw=self.patch_size, c=self.num_channels)
+        image = rearrange(image, 'b (hp wp) (c ph pw) -> b (c hp ph wp pw)', hp=self.num_image_patches, wp=self.num_image_patches, ph=self.patch_size, pw=self.patch_size, c=self.num_channels)
         return self.fc(image)
 
     def forward(self, image, context):
