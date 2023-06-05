@@ -36,17 +36,18 @@ class ROVR(nn.Module):
                 'local_net_losses': [],
         }
 
-
+    #this should be the main function that is called to train
     def train(self, video, org_video):
         obs_1, obs_2, acs_1, ac_2, log_prob_1, log_prob_2, rtg = self.rollout(video, org_video)
         self.ppo(2, (obs_2, ac_2, log_prob_2, rtg))
         self.ppo(1, (obs_1, acs_1, log_prob_1, rtg))
 
-
+    #this function should be called to run inference
     def forward(self, video):
         #TODO: run inference
         pass
     
+    #this function gets the information needed for training
     def rollout(self, video, org_video):
         curr_perceptual_loss = [self.lpips(y_star, y) for y_star, y in zip(video, org_video)]
         obs_1 = []
@@ -81,7 +82,7 @@ class ROVR(nn.Module):
         
         return obs_1, obs_2, acs_1, ac_2, log_prob_1, log_prob_2, rtg
 
-
+    #this function trains the local network and can be called independently for pretraining
     def train_local_network(self, images, conditioning, org_images):
         y_hat = self.local_net(images, conditioning)
         loss = self.lpips(y_hat, org_images, normalize=True)
@@ -91,6 +92,7 @@ class ROVR(nn.Module):
         self.logger['local_net_losses'].append(loss.detach())
         return y_hat, loss.detach()
 
+    #this function calculates rewards to go from marginal rewards
     def compute_rewards_to_go(self, rewards, gamma=1):
         b, t = rewards.size()  # Get the batch size and sequence length
         rewards_to_go = torch.zeros_like(rewards)  # Initialize a tensor of rewards-to-go with the same shape as rewards
@@ -103,7 +105,7 @@ class ROVR(nn.Module):
 
         return rewards_to_go
 
-
+    #this function runs ppo on the selected network
     def ppo(self, net_num, info):                                                                
         if net_num == 1:
             actor = self.actor1
@@ -149,6 +151,7 @@ class ROVR(nn.Module):
             actor_losses.append(actor_loss.detach())
             critic_losses.append(critic_loss.detach())
 
+    #this function calculates the optical flow of a video
     def calculate_optical_flow(self, images):
         images = images.numpy().transpose(0, 2, 3, 1)
         prev_gray = cv2.cvtColor(images[0], cv2.COLOR_RGB2GRAY)
