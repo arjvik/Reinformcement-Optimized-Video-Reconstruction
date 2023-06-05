@@ -60,7 +60,8 @@ class PolicyNetwork1(nn.Module):
         logits = self.compute_logits(image, context)
         if not self.is_critic:
             probs = logits.softmax(dim=1)
-            return probs.argmax(dim=1), probs.max(dim=1).log()
+            maxes = probs.max(dim=1)
+            return maxes.indices, maxes.values.log()
         else:
             score = self.fc(logits)
             return score.squeeze(1)
