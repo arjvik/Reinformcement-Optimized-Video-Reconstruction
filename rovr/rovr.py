@@ -74,7 +74,6 @@ class ROVR(nn.Module):
         encoded_frames = self.video_encoder(video)
         for i in range(self.time_steps):
             
-        
             pn_1_top_frame = self.actor1(encoded_frames, lstm_token).unsqueeze(0)
             
             target_frame_index = pn_1_top_frame.item()
@@ -133,13 +132,19 @@ class ROVR(nn.Module):
 
             local_device = video.device
 
-            lstm_token = torch.zeros(b, 3, 80, 80).to(local_device)
+            lstm_token = torch.zeros(b, 3, 80, 80).to(local_device) #reasonable default 
+            
+            print("Videos Range", video.min(), video.max())
 
-            encoded_frames = self.video_encoder(video) 
+            encoded_frames = self.video_encoder(video) #output extracted features
+            
+            print("Encoded Frames Range", encoded_frames.min(), encoded_frames.max())
+            
             for i in range(self.time_steps):
 
-
                 pn_1_top_frame, pn_1_log_prob = self.actor1(encoded_frames, lstm_token)
+                
+                print("PN 1 Log Prob", pn_1_log_prob)
 
                 obs_1.append((encoded_frames.detach(), lstm_token.detach()))
                 acs_1.append(pn_1_top_frame)
@@ -152,6 +157,8 @@ class ROVR(nn.Module):
                 target_frame = video[:, target_frame_index, :, :, :]
 
                 pn_2_top_frames, pn_2_log_prob = self.actor2(encoded_frames.float(), target_frame.float(), pn_1_top_frame)
+                
+                print("PN 2 Log Prob", pn_2_log_prob)
 
                 obs_2.append((encoded_frames.float().detach(), target_frame.float().detach(), pn_1_top_frame.detach()))
                 acs_2.append(pn_2_top_frames)
@@ -172,6 +179,8 @@ class ROVR(nn.Module):
                 #ship to local_net
                 #rewards are ~0-1 for perceptual loss
                 decorrupted_image, reward = self.train_local_network(target_frame.float(), total_context.float(), org_video[:, target_frame_index, :, :, :].float())
+                
+                print("Decorrupted Image Range", decorrupted_image.min(), decorrupted_image.max())
 
                 #lstm logic
 
@@ -180,13 +189,15 @@ class ROVR(nn.Module):
                 lstm_patches = self.video_encoder.extract_patch(all_context_indices, encoded_frames)
 
                 lstm_token = self.history_encoder(all_context_indices, lstm_patches)
+                
+                print("LSTM Token Range", lstm_token.min(), lstm_token.max())
 
                 reconstructed_video[:, target_frame_index, :, :, :] = decorrupted_image.squeeze()
 
                 encoded_frames = self.video_encoder.insert_encoded_frame_batch(pn_1_top_frame, target_frame, encoded_frames)   
 
                 rewards.append(-(reward - curr_perceptual_loss[target_frame_index]))
-                curr_perceptual_loss[i] = reward
+                curr_perceptual_loss[target_frame_index] = reward
             #stack all of our lists
             obs_1 = (torch.stack([obs[0] for obs in obs_1]).squeeze(), torch.stack([obs[1] for obs in obs_1]).squeeze())
             obs_2 = (torch.stack([obs[0] for obs in obs_2]).squeeze(), torch.stack([obs[1] for obs in obs_2]).squeeze(), torch.stack([obs[2] for obs in obs_2]).squeeze().unsqueeze(-1))
