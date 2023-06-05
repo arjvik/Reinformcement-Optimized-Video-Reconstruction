@@ -10,14 +10,15 @@ import math
 class PolicyNetwork2(nn.Module):
     def __init__(self):
         super(PolicyNetwork2, self).__init__()
-        self.num_composed_frames = 49
-        self.image_size = int(math.sqrt(self.num_composed_frames) * 32)
-        self.context_size = 512
-        self.patch_size = 32
+        self.num_composed_frames = 25
+        self.context_size = 256
+        self.patch_size = 16
+        self.image_size = int(math.sqrt(self.num_composed_frames) * self.patch_size)
         self.num_channels = 3
         self.batch_size = 32
-        self.num_heads = 16
-        self.encoder_layers = 6
+        self.num_heads = 4
+        self.encoder_layers = 3
+        self.decoder_layers = 6
         self.dropout = 0.1
 
         self.num_image_patches = self.image_size // self.patch_size
@@ -30,7 +31,7 @@ class PolicyNetwork2(nn.Module):
             [EncoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.encoder_layers)]
         )
         self.decoder = nn.ModuleList(
-            [DecoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.encoder_layers)]
+            [DecoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.decoder_layers)]
         )
         #goes to -1 b/c the first frame is filler
         self.fc = nn.Linear(self.image_size**2 * self.num_channels, self.num_composed_frames-1)
