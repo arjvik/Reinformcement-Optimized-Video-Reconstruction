@@ -46,7 +46,7 @@ class PolicyNetwork1(nn.Module):
         else:
             self.fc = nn.Linear(self.image_size**2 * self.num_channels, 1)
 
-    def forward(self, image, context):
+    def compute_logits(self, image, context):
         image = self.patchify_image(image)
         context = self.patchify_context(context)
         for layer in self.context_encoder:
@@ -54,12 +54,24 @@ class PolicyNetwork1(nn.Module):
         for layer in self.decoder:
             image = layer(image, context)
         image = rearrange(image, 'b (hp wp) (c ph pw) -> b (c hp ph wp pw)', b=self.batch_size, hp=self.num_image_patches, wp=self.num_image_patches, ph=self.patch_size, pw=self.patch_size, c=self.num_channels)
+        return self.fc(image)
+
+    def forward(self, image, context):
+        logits = self.compute_logits(image, context)
         if not self.is_critic:
-            probs = F.softmax(self.fc(image), dim=1)
-            return torch.argmax(probs, dim=1)
+            probs = logits.softmax(dim=1)
+            return probs.argmax(dim=1), probs.max(dim=1).log()
         else:
-            score = self.fc(image)
+            score = self.fc(logits)
             return score.squeeze(1)
+    
+    def logprob(self, image, context, action):
+        if self.is_critic:
+            raise Exception("DO NOT CALL LOGPROB FOR CRITIC")
+        logits = self.compute_logits(image, context)
+        probs = logits.softmax(dim=1)
+        return probs.gather(1, action.unsqueeze(1)).log().squeeze(1)
+
     
     def patchify_image(self, img):
         patches = rearrange(img, 'b c (hp ph) (wp pw) -> b (hp wp) (c ph pw)', ph=self.patch_size, pw=self.patch_size)

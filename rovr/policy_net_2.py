@@ -69,7 +69,7 @@ class PolicyNetwork2(nn.Module):
             logprob = topk.values.log().sum(1) + math.log(2)
             return topk.indices, logprob
         else:
-            logits = self.compute(image, context, target)
+            logits = self.compute_logits(image, context, target)
             return logits.squeeze(1) # not really logits
 
     def logprob(self, image, context, target, action):
