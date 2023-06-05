@@ -124,7 +124,7 @@ class ROVR(nn.Module):
             critic_losses = self.logger['critic2_losses']
 
         obs, acs, log_prob, rtgs = info                
-        V = critic(obs)
+        V = critic(*obs)
         A_k = rtgs - V.detach()                                                                  
         A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
 

@@ -56,11 +56,12 @@ class PolicyNetwork2(nn.Module):
         if not self.is_critic:
             logits = self.compute(image, context, target)
             logits.scatter_(1, target, 0)
-            probs = F.softmax(image, dim=1)
+            probs = F.softmax(logits, dim=1)
             topk = torch.topk(probs, k=2, dim=1)
             logprob = topk.values.log().sum(1) + torch.log(2)
             return topk.indices, logprob
         else:
+            logits = self.compute(image, context, target)
             return logits.squeeze(1) # not really logits
 
     def logprob(self, image, context, target, action):
@@ -68,7 +69,7 @@ class PolicyNetwork2(nn.Module):
             raise Exception("DO NOT CALL LOGPROB FOR CRITIC")
         logits = self.compute(image, context, target)
         logits.scatter_(1, target, 0)
-        probs = F.softmax(image, dim=1)
+        probs = F.softmax(logits, dim=1)
         pairedprobs = torch.matmul(probs.unsqueeze(2), probs.unsqueeze(1)).reshape(self.batch_size, -1)
         action = action[:, 0]*self.output_classification_head_size+action[:, 1]
         return pairedprobs.gather(1, action.unsqueeze(1)).log().sum(1) + torch.log(2)
