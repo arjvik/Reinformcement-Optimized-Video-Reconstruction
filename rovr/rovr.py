@@ -7,6 +7,10 @@ import cv2
 
 class ROVR(nn.Module):
     def __init__(self, actor1, critic1, actor2, critic2, video_encoder, history_encoder, local_net, vid_length, time_steps, n_updates_per_ppo = 5):
+        super(ROVR, self).__init__()
+        
+        print("INIT")
+        
         self.actor1 = actor1
         self.critic1 = critic1
         self.actor2 = actor2
@@ -42,12 +46,56 @@ class ROVR(nn.Module):
         self.ppo(2, (obs_2, ac_2, log_prob_2, rtg))
         self.ppo(1, (obs_1, acs_1, log_prob_1, rtg))
 
-    #this function should be called to run inference
     def forward(self, video):
-        #TODO: run inference
-        pass
-    
-    #this function gets the information needed for training
+        b, s, c, h, w = video.shape
+
+        
+        lstm_token = torch.zeros(b, 3, 80, 80) 
+        
+        
+        for i in range(self.time_steps):
+            
+            encoded_frames = self.video_encoder(video)  
+        
+            pn_1_top_frame = self.actor1(encoded_frames, lstm_token).unsqueeze(0)
+            
+            target_frame_index = pn_1_top_frame.item()
+        
+            target_frame = video[:, target_frame_index, :, :, :]
+                
+            pn_2_top_frames, pn_2_log_prob = self.actor2(encoded_frames.float(), target_frame.float(), pn_1_top_frame)
+                      
+            #construct context package
+            
+            context_1_index = pn_2_top_frames[0, 0]
+            context_2_index = pn_2_top_frames[0, 1]
+              
+            context_frame_1 = video[:, context_1_index, :, :, :]
+            context_frame_2 = video[:, context_2_index, :, :, :]
+              
+            resized_context_1 = F.interpolate(context_frame_1, size = (128, 128), mode = "bilinear", align_corners = False)
+            resized_context_2 = F.interpolate(context_frame_2, size = (128, 128), mode = "bilinear", align_corners = False)
+        
+            total_context = torch.cat((resized_context_1, resized_context_2), dim = 0).unsqueeze(0)
+
+            #ship to local_net
+                
+            decorrupted_image = self.local_net(target_frame.float(), total_context.float())
+            
+            #lstm logic
+            
+            all_context_indices = torch.tensor([target_frame_index, context_1_index, context_2_index]).unsqueeze(0)
+            
+            lstm_patches = self.video_encoder.module.extract_patch(all_context_indices, encoded_frames)
+            
+            lstm_token = self.history_encoder(all_context_indices, lstm_patches)
+            
+            video[:, target_frame_index, :, :, :] = decorrupted_image.squeeze()
+                        
+            
+            
+        
+        
     def rollout(self, video, org_video):
         curr_perceptual_loss = [self.lpips(y_star, y) for y_star, y in zip(video, org_video)]
         obs_1 = []
@@ -172,3 +220,5 @@ class ROVR(nn.Module):
 
         average_magnitude = total_magnitude / frame_count
         return average_magnitude
+    
+    

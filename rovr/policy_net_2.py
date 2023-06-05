@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from rovr.common_layers import EncoderBlock, DecoderBlock, ImagePositionalEncoding, ContextPositionalEncoding
+from common_layers import EncoderBlock, DecoderBlock, ImagePositionalEncoding, ContextPositionalEncoding
 
 from einops import rearrange
 import math
@@ -11,12 +11,12 @@ class PolicyNetwork2(nn.Module):
     def __init__(self, is_critic=False):
         super(PolicyNetwork2, self).__init__()
         self.num_composed_frames = 25
-        self.output_size = self.num_composed_frames - 1
+        self.output_size = self.num_composed_frames
         self.context_size = 256
         self.patch_size = 16
         self.image_size = int(math.sqrt(self.num_composed_frames) * self.patch_size)
         self.num_channels = 3
-        self.batch_size = 32
+        self.batch_size = 1
         self.num_heads = 4
         self.encoder_layers = 3
         self.decoder_layers = 6
@@ -54,11 +54,12 @@ class PolicyNetwork2(nn.Module):
 
     def forward(self, image, context, target):
         if not self.is_critic:
-            logits = self.compute(image, context, target)
+            logits = self.compute_logits(image, context, target)
             logits.scatter_(1, target, 0)
             probs = F.softmax(logits, dim=1)
+            print("PROBABILITIES", probs.shape)
             topk = torch.topk(probs, k=2, dim=1)
-            logprob = topk.values.log().sum(1) + torch.log(2)
+            logprob = topk.values.log().sum(1) + math.log(2)
             return topk.indices, logprob
         else:
             logits = self.compute(image, context, target)
@@ -67,7 +68,7 @@ class PolicyNetwork2(nn.Module):
     def logprob(self, image, context, target, action):
         if self.is_critic:
             raise Exception("DO NOT CALL LOGPROB FOR CRITIC")
-        logits = self.compute(image, context, target)
+        logits = self.compute_logits(image, context, target)
         logits.scatter_(1, target, 0)
         probs = F.softmax(logits, dim=1)
         pairedprobs = torch.matmul(probs.unsqueeze(2), probs.unsqueeze(1)).reshape(self.batch_size, -1)

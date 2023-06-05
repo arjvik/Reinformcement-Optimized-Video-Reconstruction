@@ -29,7 +29,7 @@ class ActionLSTM(nn.Module):
         self.hx, self.cx = self.lstm(input_tensor, (self.hx, self.cx))
 
         out = self.fc(self.hx)
-        out = out.view(-1, 80, 80, 3)  
+        out = out.view(-1, 3, 80, 80)  # channel first
             
         return out
 

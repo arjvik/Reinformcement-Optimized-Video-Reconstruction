@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from rovr.common_layers import EncoderBlock, DecoderBlock, ImagePositionalEncoding, ContextPositionalEncoding
+from common_layers import EncoderBlock, DecoderBlock, ImagePositionalEncoding, ContextPositionalEncoding
 
 from einops import rearrange
 import math
@@ -12,10 +12,10 @@ class PolicyNetwork1(nn.Module):
         super(PolicyNetwork1, self).__init__()
         self.num_composed_frames = 25
         self.image_size = int(math.sqrt(self.num_composed_frames) * 16)
-        self.context_size = 512
+        self.context_size = 80
         self.patch_size = 16
         self.num_channels = 3
-        self.batch_size = 32
+        self.batch_size = 1
         self.num_heads = 16
         self.encoder_layers = 6
         self.dropout = 0.1
@@ -46,7 +46,7 @@ class PolicyNetwork1(nn.Module):
             context = layer(context)
         for layer in self.decoder:
             image = layer(image, context)
-        image = rearrange(image, 'b p (h w c) -> b (h p w c)', b=self.batch_size, p=self.num_image_patches**2, h=self.patch_size, w=self.patch_size, c=self.num_channels)
+        image = rearrange(image, 'b (hp wp) (c ph pw) -> b (c hp ph wp pw)', b=self.batch_size, hp=self.num_image_patches, wp=self.num_image_patches, ph=self.patch_size, pw=self.patch_size, c=self.num_channels)
         if not self.is_critic:
             probs = F.softmax(self.fc(image), dim=1)
             return torch.argmax(probs, dim=1)
@@ -55,9 +55,10 @@ class PolicyNetwork1(nn.Module):
             return score.squeeze(1)
     
     def patchify_image(self, img):
-        patches = rearrange(img, 'b (hp ph) (wp pw) c -> b (hp wp) (ph pw c)', ph=self.patch_size, pw=self.patch_size)
+        patches = rearrange(img, 'b c (hp ph) (wp pw) -> b (hp wp) (c ph pw)', ph=self.patch_size, pw=self.patch_size)
         return self.image_positional_encoding(patches)
     
     def patchify_context(self, img):
-        patches = rearrange(img, 'b (hp ph) (wp pw) c -> b (hp wp) (ph pw c)', ph=self.patch_size, pw=self.patch_size)
+        patches = rearrange(img, 'b c (hp ph) (wp pw) -> b (hp wp) (c ph pw)', ph=self.patch_size, pw=self.patch_size)
         return self.context_positional_encoding(patches)
+    

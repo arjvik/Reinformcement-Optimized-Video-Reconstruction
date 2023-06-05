@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from rovr.common_layers import EncoderBlock, DecoderBlock, ImagePositionalEncoding, ContextPositionalEncoding
+from common_layers import EncoderBlock, DecoderBlock, ImagePositionalEncoding, ContextPositionalEncoding
 
 from einops import rearrange
 
@@ -12,7 +12,7 @@ class LocalNetwork(nn.Module):
         self.patch_size = 16
         self.num_channels = 3
         self.num_context = 2
-        self.batch_size = 32
+        self.batch_size = 1
         self.num_heads = 4
         self.encoder_layers = 3
         self.decoder_layers = 6
