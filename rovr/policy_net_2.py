@@ -11,7 +11,7 @@ class PolicyNetwork2(nn.Module):
     def __init__(self):
         super(PolicyNetwork2, self).__init__()
         self.num_composed_frames = 25
-        self.output_classification_head_size = self.num_composed_frames - 1
+        self.output_size = self.num_composed_frames - 1
         self.context_size = 256
         self.patch_size = 16
         self.image_size = int(math.sqrt(self.num_composed_frames) * self.patch_size)
@@ -35,7 +35,7 @@ class PolicyNetwork2(nn.Module):
             [DecoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.decoder_layers)]
         )
         #goes to -1 b/c the first frame is filler
-        self.fc = nn.Linear(self.image_size**2 * self.num_channels, self.output_classification_head_size)
+        self.fc = nn.Linear(self.image_size**2 * self.num_channels, self.output_size)
 
     def forward(self, image, context, target):
         image = self.patchify_image(image)
