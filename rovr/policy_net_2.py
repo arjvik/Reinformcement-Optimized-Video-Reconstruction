@@ -43,16 +43,16 @@ class PolicyNetwork2(nn.Module):
             context = layer(context)
         for layer in self.decoder:
             image = layer(image, context)
-        image = rearrange(image, 'b p (h w c) -> b (h p w c)', b=self.batch_size, p=self.num_image_patches**2, h=self.patch_size, w=self.patch_size, c=self.num_channels)
+        image = rearrange(image, 'b (hp wp) (c ph pw) -> b (c hp ph wp pw)', b=self.batch_size, hp=self.num_image_patches, wp=self.num_image_patches, ph=self.patch_size, pw=self.patch_size, c=self.num_channels)
         image = self.fc(image)
         image.scatter_(1, target, 0)
         image = F.softmax(image, dim=1)
         return torch.topk(image, 2, dim=1)
     
     def patchify_image(self, img):
-        patches = rearrange(img, 'b (hp ph) (wp pw) c -> b (hp wp) (ph pw c)', ph=self.patch_size, pw=self.patch_size)
+        patches = rearrange(img, 'b c (hp ph) (wp pw) -> b (hp wp) (c ph pw)', ph=self.patch_size, pw=self.patch_size)
         return self.image_positional_encoding(patches)
     
     def patchify_context(self, img):
-        patches = rearrange(img, 'b (hp ph) (wp pw) c -> b (hp wp) (ph pw c)', ph=self.patch_size, pw=self.patch_size)
+        patches = rearrange(img, 'b c (hp ph) (wp pw) -> b (hp wp) (c ph pw)', ph=self.patch_size, pw=self.patch_size)
         return self.context_positional_encoding(patches)

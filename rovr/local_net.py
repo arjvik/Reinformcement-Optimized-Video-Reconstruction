@@ -39,14 +39,14 @@ class LocalNetwork(nn.Module):
             context = layer(context)
         for layer in self.decoder:
             image = layer(image, context)
-        image = rearrange(image, 'b (hp wp) (ph pw c) -> b (hp ph) (wp pw) c', b=self.batch_size, hp=self.num_image_patches, wp=self.num_image_patches, ph=self.patch_size, pw=self.patch_size, c=self.num_channels)
-        image = self.fcn(image.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+        image = rearrange(image, 'b (hp wp) (c ph pw) -> b c (hp ph) (wp pw)', b=self.batch_size, hp=self.num_image_patches, wp=self.num_image_patches, ph=self.patch_size, pw=self.patch_size, c=self.num_channels)
+        image = self.fcn(image)
         return image
     
     def patchify_image(self, img):
-        patches = rearrange(img, 'b (hp ph) (wp pw) c -> b (hp wp) (ph pw c)', ph=self.patch_size, pw=self.patch_size)
+        patches = rearrange(img, 'b c (hp ph) (wp pw) -> b (hp wp) (c ph pw)', ph=self.patch_size, pw=self.patch_size)
         return self.image_positional_encoding(patches)
     
     def patchify_context(self, img):
-        patches = rearrange(img, 'b n (hp ph) (wp pw) c -> b (n hp wp) (ph pw c)', ph=self.patch_size, pw=self.patch_size)
+        patches = rearrange(img, 'b n c (hp ph) (wp pw) -> b (n hp wp) (c ph pw)', ph=self.patch_size, pw=self.patch_size)
         return self.context_positional_encoding(patches)
