@@ -52,10 +52,10 @@ class ROVR(nn.Module):
         
         lstm_token = torch.zeros(b, 3, 80, 80) 
         
-        
+        encoded_frames = self.video_encoder(video) 
         for i in range(self.time_steps):
             
-            encoded_frames = self.video_encoder(video)  
+             
         
             pn_1_top_frame = self.actor1(encoded_frames, lstm_token).unsqueeze(0)
             
@@ -97,7 +97,9 @@ class ROVR(nn.Module):
         
         
     def rollout(self, video, org_video):
-        curr_perceptual_loss = [self.lpips(y_star, y) for y_star, y in zip(video, org_video)]
+        b, s, c, h, w = video.shape
+        curr_perceptual_loss = self.lpips(video.squeeze(0).float(), org_video.squeeze(0).float(), normalize=True)
+        
         obs_1 = []
         obs_2 = []
         acs_1 = []
@@ -105,24 +107,72 @@ class ROVR(nn.Module):
         log_prob_1 = []
         log_prob_2 = []
         rewards = []
-        org_optical_flow = self.calculate_optical_flow(org_video)
-        corrupted_optical_flow = self.calculate_optical_flow(video)
-        reconstructed_video = video
+
+        lstm_token = torch.zeros(b, 3, 80, 80) 
+        org_optical_flow = self.calculate_optical_flow(org_video.squeeze(0))
+        corrupted_optical_flow = self.calculate_optical_flow(video.squeeze(0))
+
+        encoded_frames = self.video_encoder(video) 
         for i in range(self.time_steps):
-            #step through every model and get to image, conditioning to feed into local_net
-            #append to obs_1, obs_2, acs_1, ac_2, log_prob_1, log_prob_2 using the two get_log_prob methods
-            #TODO
+             
+            
+            pn_1_top_frame, pn_1_log_prob = self.actor1(encoded_frames, lstm_token)
+            
+            obs_1.append((encoded_frames, lstm_token))
+            acs_1.append(pn_1_top_frame)
+            log_prob_1.append(pn_1_log_prob)
 
+            pn_1_top_frame = pn_1_top_frame.unsqueeze(0)
 
-            image = []
-            conditioning = []
-            #rewards are ~0-1 for perceptual loss
-            y_hat, reward = self.train_local_network(image, conditioning, org_video["TARGET NUMBER"])
-            reconstructed_video["TARGET NUMBER"] = y_hat
-            rewards.append(-(reward - curr_perceptual_loss["TARGET NUMBER"]))
-            curr_perceptual_loss[i] = reward
+            target_frame_index = pn_1_top_frame.item()
         
-        optical_flow = self.calculate_optical_flow(reconstructed_video)
+            target_frame = video[:, target_frame_index, :, :, :]
+                
+            pn_2_top_frames, pn_2_log_prob = self.actor2(encoded_frames.float(), target_frame.float(), pn_1_top_frame)
+            
+            obs_2.append((encoded_frames.float(), target_frame.float(), pn_1_top_frame))
+            ac_2.append(pn_2_top_frames)
+            log_prob_2.append(pn_2_log_prob)
+            #construct context package
+            
+            context_1_index = pn_2_top_frames[0, 0]
+            context_2_index = pn_2_top_frames[0, 1]
+              
+            context_frame_1 = video[:, context_1_index, :, :, :]
+            context_frame_2 = video[:, context_2_index, :, :, :]
+              
+            resized_context_1 = F.interpolate(context_frame_1, size = (128, 128), mode = "bilinear", align_corners = False)
+            resized_context_2 = F.interpolate(context_frame_2, size = (128, 128), mode = "bilinear", align_corners = False)
+        
+            total_context = torch.cat((resized_context_1, resized_context_2), dim = 0).unsqueeze(0)
+
+            #ship to local_net
+            #rewards are ~0-1 for perceptual loss
+            decorrupted_image, reward = self.train_local_network(target_frame.float(), total_context.float(), org_video[:, target_frame_index, :, :, :].float())
+            
+            #lstm logic
+            
+            all_context_indices = torch.tensor([target_frame_index, context_1_index, context_2_index]).unsqueeze(0)
+            
+            lstm_patches = self.video_encoder.module.extract_patch(all_context_indices, encoded_frames)
+            
+            lstm_token = self.history_encoder(all_context_indices, lstm_patches)
+            
+            video[:, target_frame_index, :, :, :] = decorrupted_image.squeeze()
+            
+            
+            rewards.append(-(reward - curr_perceptual_loss[target_frame_index]))
+            curr_perceptual_loss[i] = reward
+        #stack all of our lists
+        obs_1 = torch.stack(obs_1)
+        obs_2 = torch.stack(obs_2)
+        acs_1 = torch.stack(acs_1)
+        ac_2 = torch.stack(ac_2)
+        log_prob_1 = torch.stack(log_prob_1)
+        log_prob_2 = torch.stack(log_prob_2)
+        rewards = torch.stack(rewards)
+
+        optical_flow = self.calculate_optical_flow(video.squeeze(0))
         #increase distance from corrupted optical flow and decrease distance from original optical flow
         rewards[-1] = abs(optical_flow - corrupted_optical_flow) - abs(org_optical_flow - optical_flow)
     
