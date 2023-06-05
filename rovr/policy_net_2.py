@@ -65,8 +65,9 @@ class PolicyNetwork2(nn.Module):
             logits.scatter_(1, target, 0)
             probs = F.softmax(logits, dim=1)
             print("PROBABILITIES", probs.shape)
+            print("TOPK", torch.topk(probs, k=2, dim=1))
             topk = torch.topk(probs, k=2, dim=1)
-            logprob = topk.values.log().sum(1) + math.log(2)
+            logprob = topk.values.log().sum(1) + .69314
             return topk.indices.detach(), logprob.detach()
         else:
             logits = self.compute_logits(image, context, target)
