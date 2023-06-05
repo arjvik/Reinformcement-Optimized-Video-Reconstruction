@@ -18,6 +18,8 @@ class PolicyNetwork2(nn.Module):
         self.num_channels = 3
         self.batch_size = 1
         self.num_heads = 4
+        self.is_critic = is_critic
+        
         if not self.is_critic:
             self.encoder_layers = 3
             self.decoder_layers = 6
@@ -30,7 +32,7 @@ class PolicyNetwork2(nn.Module):
         self.num_image_patches = self.image_size // self.patch_size
         self.num_context_patches = self.context_size // self.patch_size
 
-        self.is_critic = is_critic
+
 
         self.image_positional_encoding = ImagePositionalEncoding(num_image_patches=self.num_image_patches, patch_size=self.patch_size, num_channels=self.num_channels, batch_size=self.batch_size)
         self.context_positional_encoding = ImagePositionalEncoding(num_image_patches=self.num_context_patches, patch_size=self.patch_size, num_channels=self.num_channels, batch_size=self.batch_size)
