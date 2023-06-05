@@ -41,8 +41,6 @@ class VideoDataset(Dataset):
 
         return corrupted_frame, mask
 
-    def normalize(self, frame):
-        return (frame / 127.5) - 1
 
     def __len__(self):
         return len(self.subfolders) * 2 # each folder corresponds to two videos
@@ -75,9 +73,9 @@ class VideoDataset(Dataset):
                 corrupted_right = self.transform(corrupted_right)
 
             if idx % 2 == 0:
-                left_video.append((self.normalize(corrupted_left), self.normalize(left_frame), mask_left))
+                left_video.append((corrupted_left, left_frame, mask_left))
             else:
-                right_video.append((self.normalize(corrupted_right), self.normalize(right_frame), mask_right))
+                right_video.append((corrupted_right, right_frame, mask_right))
 
         if idx % 2 == 0:
             corrupted_frames, frames, masks = zip(*left_video)
