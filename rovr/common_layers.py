@@ -81,8 +81,8 @@ class FeedForwardBlock(nn.Module):
     def __init__(self, hidden_dim, dropout):
         super(FeedForwardBlock, self).__init__()
 
-        self.fc1 = nn.Linear(hidden_dim, 2 * hidden_dim)
-        self.fc2 = nn.Linear(2 * hidden_dim, hidden_dim)
+        self.fc1 = nn.Linear(hidden_dim, hidden_dim//4)
+        self.fc2 = nn.Linear(hidden_dim//4, hidden_dim)
         self.layer_norm = nn.LayerNorm(hidden_dim)
         self.dropout = nn.Dropout(dropout)
 

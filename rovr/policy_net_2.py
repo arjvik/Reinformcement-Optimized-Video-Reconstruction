@@ -36,7 +36,6 @@ class PolicyNetwork2(nn.Module):
         self.decoder = nn.ModuleList(
             [DecoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.decoder_layers)]
         )
-        #goes to -1 b/c the first frame is filler
         if not self.is_critic:
             self.fc = nn.Linear(self.image_size**2 * self.num_channels, self.output_size)
         else:
