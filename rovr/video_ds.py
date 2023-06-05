@@ -82,4 +82,4 @@ class VideoDataset(Dataset):
         else:
             corrupted_frames, frames, masks = zip(*right_video)
 
-        return torch.from_numpy(np.array(corrupted_frames)).permute(0, 3, 1, 2), torch.from_numpy(np.array(frames)).permute(0, 3, 1, 2), torch.from_numpy(np.array(masks)).permute(0, 3, 1, 2)
+        return torch.from_numpy(np.array(corrupted_frames)).permute(0, 3, 1, 2) / 255, torch.from_numpy(np.array(frames)).permute(0, 3, 1, 2) / 255, torch.from_numpy(np.array(masks)).permute(0, 3, 1, 2) / 255
