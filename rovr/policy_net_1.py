@@ -1,61 +1,55 @@
 import torch
 import torch.nn as nn
-from torchvision.models import vit_b_32
+import torch.nn.functional as F
+
+from rovr.common_layers import EncoderBlock, DecoderBlock, ImagePositionalEncoding, ContextPositionalEncoding
+
+from einops import rearrange
+import math
 
 class PolicyNetwork1(nn.Module):
-    def __init__(self, num_frames=49, patch_size=32, param_mode = 'reset', modifications = None):
-        super(VideoTransformer, self).__init__()
+    def __init__(self):
+        super(PolicyNetwork1, self).__init__()
+        self.num_composed_frames = 25
+        self.image_size = int(math.sqrt(self.num_composed_frames) * 16)
+        self.context_size = 512
+        self.patch_size = 16
+        self.num_channels = 3
+        self.batch_size = 32
+        self.num_heads = 16
+        self.encoder_layers = 6
+        self.dropout = 0.1
 
-        self.vit_model = vit_b_32(pretrained=True)     
-        self.modify_params(param_mode, modifications)
+        self.num_image_patches = self.image_size // self.patch_size
+        self.num_context_patches = self.context_size // self.patch_size
 
-        self.patch_size = patch_size
-        self.embed_dim = 768
+        self.image_positional_encoding = ImagePositionalEncoding(num_image_patches=self.num_image_patches, patch_size=self.patch_size, num_channels=self.num_channels, batch_size=self.batch_size)
+        self.context_positional_encoding = ImagePositionalEncoding(num_image_patches=self.num_context_patches, patch_size=self.patch_size, num_channels=self.num_channels, batch_size=self.batch_size)
 
-        self.vit_model.heads.head = nn.Linear(self.embed_dim, num_frames) 
-        
-        
-    def modify_params(self, param_mode, modifications):
-        if modifications is None:
-            return
-        
-        blocks, reset_head, reset_conv_proj = modifications
-        
-        encoder_blocks = self.vit_model.encoder.layers
-        head = self.vit_model.heads.head
-        conv_proj = self.vit_model.conv_proj
-        
-        for i, layer in enumerate(encoder_blocks):
-            if i in blocks:
-                if param_mode == 'freeze':
-                    for param in layer.parameters():
-                        param.requires_grad = False
-                elif param_mode == 'reset':
-                    for param in layer.parameters():
-                        if param.dim() > 1: # exclude bias terms
-                            nn.init.kaiming_normal_(param)
-        
-        if reset_head:
-            for param in head.parameters():
-                if param_mode == 'freeze':
-                    param.requires_grad = False
-                elif param_mode == 'reset':
-                    if param.dim() > 1: # exclude bias terms
-                        nn.init.kaiming_normal_(param)
-                        
-        if reset_conv_proj:
-            for param in conv_proj.parameters():
-                if param_mode == 'freeze':
-                    param.requires_grad = False
-                elif param_mode == 'reset':
-                    if param.dim() > 1: # exclude bias terms
-                        nn.init.kaiming_normal_(param)               
+        self.context_encoder = nn.ModuleList(
+            [EncoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.encoder_layers)]
+        )
+        self.decoder = nn.ModuleList(
+            [DecoderBlock(self.patch_size**2 * self.num_channels, self.num_heads, self.dropout) for _ in range(self.encoder_layers)]
+        )
+        self.fc = nn.Linear(self.image_size**2 * self.num_channels, self.num_composed_frames)
 
-
-    def forward(self, x, lstm_token):
-        
-        x[:, :, 0:32, 0:32] = lstm_token #kick out first slot for the lstm token
-        
-        logits = self.vit_model(x)
-                                
-        return logits
+    def forward(self, image, context):
+        image = self.patchify_image(image)
+        context = self.patchify_context(context)
+        for layer in self.context_encoder:
+            context = layer(context)
+        for layer in self.decoder:
+            image = layer(image, context)
+        image = rearrange(image, 'b p (h w c) -> b (h p w c)', b=self.batch_size, p=self.num_image_patches**2, h=self.patch_size, w=self.patch_size, c=self.num_channels)
+        image = self.fc(image)
+        image = F.softmax(image, dim=1)
+        return torch.topk(image, 2, dim=1)
+    
+    def patchify_image(self, img):
+        patches = rearrange(img, 'b (hp ph) (wp pw) c -> b (hp wp) (ph pw c)', ph=self.patch_size, pw=self.patch_size)
+        return self.image_positional_encoding(patches)
+    
+    def patchify_context(self, img):
+        patches = rearrange(img, 'b (hp ph) (wp pw) c -> b (hp wp) (ph pw c)', ph=self.patch_size, pw=self.patch_size)
+        return self.context_positional_encoding(patches)
