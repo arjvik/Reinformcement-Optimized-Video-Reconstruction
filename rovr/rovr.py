@@ -3,6 +3,7 @@ import lpips
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+import cv2
 
 class ROVR(nn.Module):
     def __init__(self, actor1, critic1, actor2, critic2, video_encoder, history_encoder, local_net, vid_length, time_steps):
@@ -53,6 +54,8 @@ class ROVR(nn.Module):
         log_prob_1 = []
         log_prob_2 = []
         rewards = []
+        org_optical_flow = self.calculate_optical_flow(org_video)
+        reconstructed_video = video
         for i in range(self.time_steps):
             #step through every model and get to image, conditioning to feed into local_net
             #append to obs_1, obs_2, acs_1, ac_2, log_prob_1, log_prob_2 using the two get_log_prob methods
@@ -62,8 +65,12 @@ class ROVR(nn.Module):
             image = []
             conditioning = []
             y_hat, reward = self.train_local_network(image, conditioning, org_video["TARGET NUMBER"])
+            reconstructed_video["TARGET NUMBER"] = y_hat
             rewards.append(-(reward - curr_perceptual_loss["TARGET NUMBER"]))
             curr_perceptual_loss[i] = reward
+        
+        optical_flow = self.calculate_optical_flow(reconstructed_video)
+        rewards[-1] = abs(optical_flow - org_optical_flow)
         rtg = self.compute_rewards_to_go(rewards)
         
         return obs_1, obs_2, acs_1, ac_2, log_prob_1, log_prob_2, rtg
@@ -136,3 +143,23 @@ class ROVR(nn.Module):
             actor_losses.append(actor_loss.detach())
             critic_losses.append(critic_loss.detach())
 
+    def calculate_optical_flow(self, images):
+        images = images.numpy().transpose(0, 2, 3, 1)
+        prev_gray = cv2.cvtColor(images[0], cv2.COLOR_RGB2GRAY)
+
+        total_magnitude = 0
+        frame_count = 0
+
+        for i in range(1, len(images)):
+            gray = cv2.cvtColor(images[i], cv2.COLOR_RGB2GRAY)
+
+            flow = cv2.calcOpticalFlowFarneback(prev_gray, gray, None, pyr_scale=0.5, levels=5, winsize=11, iterations=5, poly_n=5, poly_sigma=1.1, flags=0)
+
+            magnitude, _ = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+            total_magnitude += np.sum(magnitude)
+            frame_count += 1
+            
+            prev_gray = gray
+
+        average_magnitude = total_magnitude / frame_count
+        return average_magnitude
