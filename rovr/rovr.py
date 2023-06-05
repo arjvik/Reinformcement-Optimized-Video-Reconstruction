@@ -3,7 +3,7 @@ import lpips
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.transforms.functional as F
+import torchvision.transforms.functional as Ft
 from torchvision.models.optical_flow import raft_small
 
 class ROVR(nn.Module):
@@ -50,10 +50,12 @@ class ROVR(nn.Module):
     def forward(self, video):
         b, s, c, h, w = video.shape
 
+        local_device = video.device
+
         
-        lstm_token = torch.zeros(b, 3, 80, 80) 
-        
-        encoded_frames = self.video_encoder(video) 
+        lstm_token = torch.zeros(b, 3, 80, 80).to(local_device)
+
+        encoded_frames = self.video_encoder(video)
         for i in range(self.time_steps):
             
              
@@ -85,14 +87,15 @@ class ROVR(nn.Module):
             
             #lstm logic
             
-            all_context_indices = torch.tensor([target_frame_index, context_1_index, context_2_index]).unsqueeze(0)
-            
-            lstm_patches = self.video_encoder.module.extract_patch(all_context_indices, encoded_frames)
+            all_context_indices = torch.tensor([target_frame_index, context_1_index, context_2_index]).unsqueeze(0).to(local_device)
+             
+            lstm_patches = self.video_encoder.extract_patch(all_context_indices, encoded_frames)
             
             lstm_token = self.history_encoder(all_context_indices, lstm_patches)
             
             video[:, target_frame_index, :, :, :] = decorrupted_image.squeeze()
-                        
+
+            encoded_frames = self.video_encoder.insert_encoded_frame_batch(pn_1_top_frame, target_frame, encoded_frames)   
             
             
         
@@ -107,10 +110,13 @@ class ROVR(nn.Module):
         log_prob_1 = []
         log_prob_2 = []
         rewards = []
-
-        lstm_token = torch.zeros(b, 3, 80, 80) 
+ 
         org_optical_flow = self.calculate_optical_flow(org_video.squeeze(0))
         corrupted_optical_flow = self.calculate_optical_flow(video.squeeze(0))
+
+        local_device = video.device
+
+        lstm_token = torch.zeros(b, 3, 80, 80).to(local_device)
 
         encoded_frames = self.video_encoder(video) 
         for i in range(self.time_steps):
@@ -160,7 +166,8 @@ class ROVR(nn.Module):
             
             video[:, target_frame_index, :, :, :] = decorrupted_image.squeeze()
             
-            
+            encoded_frames = self.video_encoder.insert_encoded_frame_batch(pn_1_top_frame, target_frame, encoded_frames)   
+
             rewards.append(-(reward - curr_perceptual_loss[target_frame_index]))
             curr_perceptual_loss[i] = reward
         #stack all of our lists
@@ -254,7 +261,7 @@ class ROVR(nn.Module):
         model = model.eval().cuda() 
 
         def preprocess_image(image_tensor):
-            image_tensor = F.resize(image_tensor, (256, 256))
+            image_tensor = Ft.resize(image_tensor, (256, 256))
             return image_tensor.cuda()
         
         b, _, _, _ = frames.shape
