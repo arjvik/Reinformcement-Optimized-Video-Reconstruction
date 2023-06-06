@@ -64,6 +64,7 @@ class ROVR(nn.Module):
             'local_net_losses': [],
             'local_net_lpips_losses': [],
             'local_net_mse_losses': [],
+            'gamma': []
         }
 
     #this should be the main function that is called to train
@@ -241,7 +242,8 @@ class ROVR(nn.Module):
         print("Range of Images", org_images.min(), org_images.max())
         lpips_loss = self.lpips(y_hat, org_images, normalize=True)
         mse_loss = self.local_mse(rearrange(y_hat, 'b c h w -> b (c h w)'), rearrange(org_images, 'b c h w -> b (c h w)'))
-        gamma = self.lpips_mse_gamma + 0.1
+        # gamma = 0.9 * self.lpips_mse_gamma + 0.1
+        gamma = 1
         loss = (1-gamma) * lpips_loss + gamma * mse_loss
         self.lpips_mse_gamma *= 0.96
         self.local_net_optimizer.zero_grad()
@@ -250,6 +252,7 @@ class ROVR(nn.Module):
         self.logger['local_net_losses'].append(loss.detach().item())
         self.logger['local_net_lpips_losses'].append(lpips_loss.detach().item())
         self.logger['local_net_mse_losses'].append(mse_loss.detach().item())
+        self.logger['gamma'].append(gamma)
         return y_hat, lpips_loss.detach(), mse_loss.detach(), loss.detach()
 
     #this function calculates rewards to go from marginal rewards
