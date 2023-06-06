@@ -17,6 +17,7 @@ class PolicyNetwork1(nn.Module):
         self.num_channels = 3
         self.num_heads = 16
         self.is_critic = is_critic
+        self.temperature = .5
         
         if not self.is_critic:
             self.encoder_layers = 2
@@ -58,7 +59,7 @@ class PolicyNetwork1(nn.Module):
     def forward(self, image, context):
         logits = self.compute_logits(image, context)
         if not self.is_critic:
-            probs = logits.softmax(dim=1)
+            probs = F.gumbel_softmax(logits, tau = self.temperature, hard= False, dim = 1)
             maxes = probs.max(dim=1)
             return maxes.indices.detach(), maxes.values.log().detach()
         else:
@@ -68,7 +69,7 @@ class PolicyNetwork1(nn.Module):
         if self.is_critic:
             raise Exception("DO NOT CALL LOGPROB FOR CRITIC")
         logits = self.compute_logits(image, context)
-        probs = logits.softmax(dim=1)
+        probs = F.gumbel_softmax(logits, tau = self.temperature, hard= False, dim = 1)
         return probs.gather(1, action.unsqueeze(1)).log().squeeze(1)
 
     

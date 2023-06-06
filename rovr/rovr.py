@@ -14,7 +14,7 @@ from policy_net_2 import PolicyNetwork2
 from resnet_extractor import ResnetFeatureExtractor
 
 class ROVR(nn.Module):
-    def __init__(self, actor1 = None, critic1 = None, actor2 = None, critic2 = None, video_encoder = None, history_encoder = None, local_net = None, vid_length = 25, time_steps = 25, n_updates_per_ppo = 5):
+    def __init__(self, actor1 = None, critic1 = None, actor2 = None, critic2 = None, video_encoder = None, history_encoder = None, local_net = None, vid_length = 25, time_steps = 25, n_updates_per_ppo = 8):
         super(ROVR, self).__init__()
         
         print("INIT")
@@ -59,7 +59,7 @@ class ROVR(nn.Module):
 
     #this should be the main function that is called to train
     def train(self, video, org_video):
-        obs_1, obs_2, acs_1, acs_2, log_prob_1, log_prob_2, rtg = self.rollout(video, org_video)
+        obs_1, obs_2, acs_1, acs_2, log_prob_1, log_prob_2, rtg = self.forward(video, org_video)
         self.ppo(2, (obs_2, acs_2, log_prob_2, rtg))
         self.ppo(1, (obs_1, acs_1, log_prob_1, rtg))
 
@@ -134,11 +134,11 @@ class ROVR(nn.Module):
 
             lstm_token = torch.zeros(b, 3, 80, 80).to(local_device) #reasonable default 
             
-            print("Videos Range", video.min(), video.max())
+            # print("Videos Range", video.min(), video.max())
 
             encoded_frames = self.video_encoder(video) #output extracted features
             
-            print("Encoded Frames Range", encoded_frames.min(), encoded_frames.max())
+            # print("Encoded Frames Range", encoded_frames.min(), encoded_frames.max())
             
             for i in range(self.time_steps):
 
@@ -180,7 +180,7 @@ class ROVR(nn.Module):
                 #rewards are ~0-1 for perceptual loss
                 decorrupted_image, reward = self.train_local_network(target_frame.float(), total_context.float(), org_video[:, target_frame_index, :, :, :].float())
                 
-                print("Decorrupted Image Range", decorrupted_image.min(), decorrupted_image.max())
+                # print("Decorrupted Image Range", decorrupted_image.min(), decorrupted_image.max())
 
                 #lstm logic
 
@@ -190,7 +190,7 @@ class ROVR(nn.Module):
 
                 lstm_token = self.history_encoder(all_context_indices, lstm_patches)
                 
-                print("LSTM Token Range", lstm_token.min(), lstm_token.max())
+                # print("LSTM Token Range", lstm_token.min(), lstm_token.max())
 
                 reconstructed_video[:, target_frame_index, :, :, :] = decorrupted_image.squeeze()
 
@@ -286,8 +286,8 @@ class ROVR(nn.Module):
             critic_loss.backward()
             critic_optim.step()
 
-            actor_losses.append(actor_loss.detach())
-            critic_losses.append(critic_loss.detach())
+            actor_losses.append(actor_loss.detach().item())
+            critic_losses.append(critic_loss.detach().item())
             print("HI!")
 
     #this function calculates the optical flow of a video

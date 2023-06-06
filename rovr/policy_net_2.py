@@ -18,6 +18,7 @@ class PolicyNetwork2(nn.Module):
         self.num_channels = 3
         self.num_heads = 4
         self.is_critic = is_critic
+        self.temperature = .5
         
         if not self.is_critic:
             self.encoder_layers = 3
@@ -55,17 +56,23 @@ class PolicyNetwork2(nn.Module):
         for layer in self.decoder:
             image = layer(image, context)
         image = rearrange(image, 'b (hp wp) (c ph pw) -> b (c hp ph wp pw)', hp=self.num_image_patches, wp=self.num_image_patches, ph=self.patch_size, pw=self.patch_size, c=self.num_channels)
-        logits = self.fc(image)
+        mean = image.mean(dim=1, keepdim=True)
+        std = image.std(dim=1, keepdim=True)
+        normalized_image = (image - mean) / std
+        logits = self.fc(normalized_image)
+        # print(f"{logits.mean(dim=1)=}, {logits.std(dim = 1, keepdim = True)=}")
+        # logits = (logits - logits.mean(dim = 1))/(logits.std(dim = (1, ), keepdim = True) + .1)
         return logits
 
     def forward(self, image, context, target):
         if not self.is_critic:
             logits = self.compute_logits(image, context, target)
-            print(f"SCATTERED {target.shape=} {logits.shape=}")
+            
             logits.scatter_(1, target, 0)
-            probs = F.softmax(logits, dim=1)
-            print("PROBABILITIES", probs.shape)
+            print("TOPK BEFORE SOFTMAX:", torch.topk(logits, k=2, dim = 1))
+            probs = F.gumbel_softmax(logits, tau = self.temperature, hard = False, dim=1)
             topk = torch.topk(probs, k=2, dim=1)
+            print(f"{topk=}")
             logprob = topk.values.log().sum(1) + math.log(2)
             return topk.indices.detach(), logprob.detach()
         else:
@@ -77,7 +84,7 @@ class PolicyNetwork2(nn.Module):
             raise Exception("DO NOT CALL LOGPROB FOR CRITIC")
         logits = self.compute_logits(image, context, target)
         logits.scatter_(1, target, 0)
-        probs = F.softmax(logits, dim=1)
+        probs = F.gumbel_softmax(logits, tau = self.temperature, hard = False, dim=1)
         pairedprobs = rearrange(torch.matmul(probs.unsqueeze(2), probs.unsqueeze(1)), 'b i j -> b (i j)', i=self.output_size, j=self.output_size)
         action = action[:, 0]*self.output_size+action[:, 1]
         return pairedprobs.gather(1, action.unsqueeze(1)).log().sum(1) + 0.69314
