@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import torchvision.transforms.functional as Ft
 from torchvision.models.optical_flow import raft_small
 from tqdm import tqdm
+from einops import rearrange
 
 from video_ds import VideoDataset
 from local_net import LocalNetwork
@@ -40,6 +41,7 @@ class ROVR(nn.Module):
         self.clip = 0.2
         
         self.lpips = lpips.LPIPS(net='alex')
+        self.local_mse = torch.nn.MSELoss()
         self.video_encoder = video_encoder
         self.history_encoder = history_encoder
 
@@ -50,24 +52,23 @@ class ROVR(nn.Module):
         self.local_net_optimizer = torch.optim.Adam(self.local_net.parameters(), lr=1e-4)
 
 
-        self.logger = {
-                'actor1_losses': [],
-                'critic1_losses': [],
-                'actor2_losses': [],
-                'critic2_losses': [],
-                'local_net_losses': [],
-        }
+        self.logger = self.init_logger_dict()
 
-    #this should be the main function that is called to train
-    def train(self, video, org_video):
-        #reset logger
-        self.logger = {
+    def init_logger_dict(self):
+        return {
             'actor1_losses': [],
             'critic1_losses': [],
             'actor2_losses': [],
             'critic2_losses': [],
             'local_net_losses': [],
+            'local_net_lpips_losses': [],
+            'local_net_mse_losses': [],
         }
+
+    #this should be the main function that is called to train
+    def train(self, video, org_video):
+        #reset logger
+        self.logger = self.init_logger_dict()
              
         obs_1, obs_2, acs_1, acs_2, log_prob_1, log_prob_2, rtg = self.forward(video, org_video)
         print("Starting PPO on 2!")
@@ -190,8 +191,8 @@ class ROVR(nn.Module):
 
                 #ship to local_net
                 #rewards are ~0-1 for perceptual loss
-                decorrupted_image, reward = self.train_local_network(target_frame.float(), total_context.float(), org_video[:, target_frame_index, :, :, :].float())
-                
+                decorrupted_image, lpips_loss, mse_loss, total_loss = self.train_local_network(target_frame.float(), total_context.float(), org_video[:, target_frame_index, :, :, :].float())
+                reward = lpips_loss
                 # print("Decorrupted Image Range", decorrupted_image.min(), decorrupted_image.max())
 
                 #lstm logic
@@ -237,12 +238,16 @@ class ROVR(nn.Module):
         y_hat = self.local_net(images, conditioning)
         print("Range of Output", y_hat.min(),  y_hat.max())
         print("Range of Images", org_images.min(), org_images.max())
-        loss = self.lpips(y_hat, org_images, normalize=True)
+        lpips_loss = self.lpips(y_hat, org_images, normalize=True)
+        mse_loss = self.local_mse(rearrange(y_hat, 'b c h w -> b (c h w)'), rearrange(org_images, 'b c h w -> b (c h w)'))
+        loss = 0.8 * lpips_loss + 0.2 * mse_loss
         self.local_net_optimizer.zero_grad()
         loss.backward()
         self.local_net_optimizer.step()
         self.logger['local_net_losses'].append(loss.detach().item())
-        return y_hat, loss.detach()
+        self.logger['local_net_lpips_losses'].append(lpips_loss.detach().item())
+        self.logger['local_net_mse_losses'].append(mse_loss.detach().item())
+        return y_hat, lpips_loss.detach(), mse_loss.detach(), loss.detach()
 
     #this function calculates rewards to go from marginal rewards
     def compute_rewards_to_go(self, rewards, device, gamma=1):
