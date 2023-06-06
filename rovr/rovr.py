@@ -39,6 +39,7 @@ class ROVR(nn.Module):
         self.time_steps = time_steps
         self.num_updates_per_ppo = n_updates_per_ppo
         self.clip = 0.2
+        self.lpips_mse_gamma = 1
         
         self.lpips = lpips.LPIPS(net='alex')
         self.local_mse = torch.nn.MSELoss()
@@ -240,7 +241,9 @@ class ROVR(nn.Module):
         print("Range of Images", org_images.min(), org_images.max())
         lpips_loss = self.lpips(y_hat, org_images, normalize=True)
         mse_loss = self.local_mse(rearrange(y_hat, 'b c h w -> b (c h w)'), rearrange(org_images, 'b c h w -> b (c h w)'))
-        loss = 0.8 * lpips_loss + 0.2 * mse_loss
+        gamma = self.lpips_mse_gamma + 0.1
+        loss = (1-gamma) * lpips_loss + gamma * mse_loss
+        self.lpips_mse_gamma *= 0.96
         self.local_net_optimizer.zero_grad()
         loss.backward()
         self.local_net_optimizer.step()
