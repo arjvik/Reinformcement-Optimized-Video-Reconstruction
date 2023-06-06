@@ -52,7 +52,8 @@ class VideoDataset(Dataset):
 
         left_video = []
         right_video = []
-
+        if (len(frames) != 50):
+            print(f"ERROR {len(frames)=} {video_folder=}")
         for i in range(0, 50, 2):
             frame_path = os.path.join(video_folder, frames[i])
             frame = cv2.imread(frame_path)
