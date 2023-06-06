@@ -69,9 +69,11 @@ class CrossAttentionBlock(nn.Module):
 
         self.attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout=dropout, batch_first=True)
         self.layer_norm = nn.LayerNorm(hidden_dim)
+        self.layer_norm_encoder_output = nn.LayerNorm(hidden_dim)
 
     def forward(self, x, encoder_output):
         x = self.layer_norm(x)
+        encoder_output = self.layer_norm_encoder_output(encoder_output)
         x = x + self.attention(x, encoder_output, encoder_output)[0]
         return x
 

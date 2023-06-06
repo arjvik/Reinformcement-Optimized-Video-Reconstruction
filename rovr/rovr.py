@@ -41,7 +41,7 @@ class ROVR(nn.Module):
         self.clip = 0.2
         self.lpips_mse_gamma = 1
         
-        self.lpips = lpips.LPIPS(net='alex')
+        self.lpips = lpips.LPIPS(net='vgg')
         self.local_mse = torch.nn.MSELoss()
         self.video_encoder = video_encoder
         self.history_encoder = history_encoder
@@ -226,7 +226,7 @@ class ROVR(nn.Module):
             # print("BIG BOY REWARD = ", abs(optical_flow - corrupted_optical_flow) - abs(org_optical_flow - optical_flow)) 
             #increase distance from corrupted optical flow and decrease distance from original optical flow
             # rewards[-1] = abs(optical_flow - corrupted_optical_flow) - abs(org_optical_flow - optical_flow)
-
+            print(f"{optical_flow=}, {corrupted_optical_flow=}, {org_optical_flow=}")
             rtg = self.compute_rewards_to_go(rewards, lstm_patches.device)
             #### IF WE GET DATAPARALLEL DEVICE ERROR THIS IS THE CULPRIT
             
@@ -312,7 +312,7 @@ class ROVR(nn.Module):
             # print(f"{V[:3]=}")
             # print(f"{rtgs[:3]=}")
             actor_loss = -torch.min(L1, L2).mean()
-            critic_loss = torch.nn.MSELoss()(V, rtgs)
+            critic_loss = torch.nn.MSELoss()(V, rtgs.squeeze(1))
 
             actor_optim.zero_grad()
             actor_loss.backward(retain_graph=True)
