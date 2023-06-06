@@ -28,18 +28,18 @@ class ImageDataset(Dataset):
     
     def __getitem__(self, idx):
         #pick two distinct numbers between 5 and 10
-        n = random.randint(5, 10)
-        m = random.randint(5, 10)
+        n = random.randint(5, 10) * (2 * random.randint(0, 1) - 1)
+        m = random.randint(5, 10) * (2 * random.randint(0, 1) - 1)
         while n == m:
             m = random.randint(5, 10)
         return self.video[idx], self.video(idx + n % self.num_frames), self.video(idx + m % self.num_frames), self.org_video[idx]
     
-def load_video_dataset(root_folder, batch_size=1, num_workers=0, transform=None):
-    dataset = VideoDataset(root_folder, transform=transform)
+def load_video_dataset(root_folder, batch_size=1, num_workers=0):
+    dataset = VideoDataset(root_folder)
     return DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle = True)
 
-def load_image_dataset(video, org_video, batch_size=32, num_workers=0, transform=None):
-    dataset = ImageDataset(video, org_video, transform=transform)
+def load_image_dataset(video, org_video, batch_size=32, num_workers=0):
+    dataset = ImageDataset(video, org_video)
     return DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle = True)
 
 local_net = LocalNetwork()
