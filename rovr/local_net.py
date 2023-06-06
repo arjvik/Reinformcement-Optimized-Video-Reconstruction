@@ -39,6 +39,9 @@ class LocalNetwork(nn.Module):
         for layer in self.decoder:
             image = layer(image, context)
         image = rearrange(image, 'b (hp wp) (c ph pw) -> b c (hp ph) (wp pw)', hp=self.num_image_patches, wp=self.num_image_patches, ph=self.patch_size, pw=self.patch_size, c=self.num_channels)
+        mean = image.mean(dim=1, keepdim=True)
+        std = image.std(dim=1, keepdim=True)
+        normalized_image = (image - mean) / std
         image = self.fcn(image)
         return image
     

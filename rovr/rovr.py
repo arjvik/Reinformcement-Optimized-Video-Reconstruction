@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms.functional as Ft
 from torchvision.models.optical_flow import raft_small
+from tqdm import tqdm
 
 from video_ds import VideoDataset
 from local_net import LocalNetwork
@@ -14,7 +15,7 @@ from policy_net_2 import PolicyNetwork2
 from resnet_extractor import ResnetFeatureExtractor
 
 class ROVR(nn.Module):
-    def __init__(self, actor1 = None, critic1 = None, actor2 = None, critic2 = None, video_encoder = None, history_encoder = None, local_net = None, vid_length = 25, time_steps = 25, n_updates_per_ppo = 8):
+    def __init__(self, actor1 = None, critic1 = None, actor2 = None, critic2 = None, video_encoder = None, history_encoder = None, local_net = None, vid_length = 25, time_steps = 25, n_updates_per_ppo = 5):
         super(ROVR, self).__init__()
         
         print("INIT")
@@ -59,8 +60,19 @@ class ROVR(nn.Module):
 
     #this should be the main function that is called to train
     def train(self, video, org_video):
+        #reset logger
+        self.logger = {
+            'actor1_losses': [],
+            'critic1_losses': [],
+            'actor2_losses': [],
+            'critic2_losses': [],
+            'local_net_losses': [],
+        }
+             
         obs_1, obs_2, acs_1, acs_2, log_prob_1, log_prob_2, rtg = self.forward(video, org_video)
+        print("Starting PPO on 2!")
         self.ppo(2, (obs_2, acs_2, log_prob_2, rtg))
+        print("Starting PPO on 1!")
         self.ppo(1, (obs_1, acs_1, log_prob_1, rtg))
 
     def test(self, video):
@@ -140,11 +152,11 @@ class ROVR(nn.Module):
             
             # print("Encoded Frames Range", encoded_frames.min(), encoded_frames.max())
             
-            for i in range(self.time_steps):
+            for i in tqdm(range(self.time_steps)):
 
                 pn_1_top_frame, pn_1_log_prob = self.actor1(encoded_frames, lstm_token)
                 
-                print("PN 1 Log Prob", pn_1_log_prob)
+                # print("PN 1 Log Prob", pn_1_log_prob)
 
                 obs_1.append((encoded_frames.detach(), lstm_token.detach()))
                 acs_1.append(pn_1_top_frame)
@@ -158,7 +170,7 @@ class ROVR(nn.Module):
 
                 pn_2_top_frames, pn_2_log_prob = self.actor2(encoded_frames.float(), target_frame.float(), pn_1_top_frame)
                 
-                print("PN 2 Log Prob", pn_2_log_prob)
+                # print("       PN 2 Log Prob", pn_2_log_prob)
 
                 obs_2.append((encoded_frames.float().detach(), target_frame.float().detach(), pn_1_top_frame.detach()))
                 acs_2.append(pn_2_top_frames)
@@ -197,6 +209,7 @@ class ROVR(nn.Module):
                 encoded_frames = self.video_encoder.insert_encoded_frame_batch(pn_1_top_frame, target_frame, encoded_frames)   
 
                 rewards.append(-(reward - curr_perceptual_loss[target_frame_index]))
+                # print("REWARD = ", -(reward - curr_perceptual_loss[target_frame_index]))
                 curr_perceptual_loss[target_frame_index] = reward
             #stack all of our lists
             obs_1 = (torch.stack([obs[0] for obs in obs_1]).squeeze(), torch.stack([obs[1] for obs in obs_1]).squeeze())
@@ -207,8 +220,9 @@ class ROVR(nn.Module):
             log_prob_2 = torch.stack(log_prob_2)
 
             optical_flow = self.calculate_optical_flow(reconstructed_video.squeeze(0).float())
+            # print("BIG BOY REWARD = ", abs(optical_flow - corrupted_optical_flow) - abs(org_optical_flow - optical_flow)) 
             #increase distance from corrupted optical flow and decrease distance from original optical flow
-            rewards[-1] = abs(optical_flow - corrupted_optical_flow) - abs(org_optical_flow - optical_flow)
+            # rewards[-1] = abs(optical_flow - corrupted_optical_flow) - abs(org_optical_flow - optical_flow)
 
             rtg = self.compute_rewards_to_go(rewards, lstm_patches.device)
             #### IF WE GET DATAPARALLEL DEVICE ERROR THIS IS THE CULPRIT
@@ -221,11 +235,13 @@ class ROVR(nn.Module):
     #this function trains the local network and can be called independently for pretraining
     def train_local_network(self, images, conditioning, org_images):
         y_hat = self.local_net(images, conditioning)
+        print("Range of Output", y_hat.min(),  y_hat.max())
+        print("Range of Images", org_images.min(), org_images.max())
         loss = self.lpips(y_hat, org_images, normalize=True)
         self.local_net_optimizer.zero_grad()
         loss.backward()
         self.local_net_optimizer.step()
-        self.logger['local_net_losses'].append(loss.detach())
+        self.logger['local_net_losses'].append(loss.detach().item())
         return y_hat, loss.detach()
 
     #this function calculates rewards to go from marginal rewards
@@ -266,32 +282,38 @@ class ROVR(nn.Module):
         V = critic(*obs)
         A_k = rtgs - V.detach()                                                                  
         A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
+        # print(f"{V.detach()[:3]=}")
+        # print(f"{log_prob.shape=}")
 
 
         for _ in range(self.num_updates_per_ppo):                                                    
             V = critic(*obs)
-            curr_log_prob = actor.logprob(*obs, acs)
+            curr_log_prob = actor.logprob(*obs, acs).unsqueeze(1)
+            # print(f"{curr_log_prob.shape=}")
             ratio = torch.exp(curr_log_prob - log_prob)
+            # print(f"{(ratio>0)[:3]=}")
             
             # print(f"{A_k.requires_grad=}, {rtgs.requires_grad=}, {obs.requires_grad=}")
 
             L1 = ratio * A_k
             L2 = torch.clamp(ratio, 1 - self.clip, 1 + self.clip) * A_k
-
+            # print(f"{L1=}, {L2=}")
+            # print(f"{V[:3]=}")
+            # print(f"{rtgs[:3]=}")
             actor_loss = -torch.min(L1, L2).mean()
             critic_loss = torch.nn.MSELoss()(V, rtgs)
 
             actor_optim.zero_grad()
             actor_loss.backward(retain_graph=True)
-            actor_optim.step()
+            # actor_optim.step()
 
             critic_optim.zero_grad()
             critic_loss.backward()
-            critic_optim.step()
+            # critic_optim.step()
 
             actor_losses.append(actor_loss.detach().item())
             critic_losses.append(critic_loss.detach().item())
-            print("HI!")
+
 
     #this function calculates the optical flow of a video
     def calculate_optical_flow(self, frames):

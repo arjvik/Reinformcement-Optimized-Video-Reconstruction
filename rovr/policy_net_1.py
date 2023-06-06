@@ -54,11 +54,16 @@ class PolicyNetwork1(nn.Module):
         for layer in self.decoder:
             image = layer(image, context)
         image = rearrange(image, 'b (hp wp) (c ph pw) -> b (c hp ph wp pw)', hp=self.num_image_patches, wp=self.num_image_patches, ph=self.patch_size, pw=self.patch_size, c=self.num_channels)
-        return self.fc(image)
+        mean = image.mean(dim=1, keepdim=True)
+        std = image.std(dim=1, keepdim=True)
+        normalized_image = (image - mean) / std
+        return self.fc(normalized_image)
 
     def forward(self, image, context):
         logits = self.compute_logits(image, context)
+        
         if not self.is_critic:
+            logits = (logits - logits.mean(dim = 1))/(logits.std(dim = (1, ), keepdim = True) + .1)
             probs = F.gumbel_softmax(logits, tau = self.temperature, hard= False, dim = 1)
             maxes = probs.max(dim=1)
             return maxes.indices.detach(), maxes.values.log().detach()
@@ -68,7 +73,17 @@ class PolicyNetwork1(nn.Module):
     def logprob(self, image, context, action):
         if self.is_critic:
             raise Exception("DO NOT CALL LOGPROB FOR CRITIC")
+#         mean = image.mean(dim=0, keepdim=True)
+#         std = image.std(dim=0, keepdim=True)
+#         normalized_image = (image - mean) / std
+        
+#         mean = context.mean(dim=0, keepdim=True)
+#         std = context.std(dim=0, keepdim=True)
+#         normalized_context = (context - mean) / std
+        
         logits = self.compute_logits(image, context)
+        # print(f"{logits.mean(dim = 1)[:3]=}, {logits.std(dim = 1)[:3]=}")
+        # logits = (logits - logits.mean(dim = 1))/(logits.std(dim = (1, ), keepdim = True) + .1)
         probs = F.gumbel_softmax(logits, tau = self.temperature, hard= False, dim = 1)
         return probs.gather(1, action.unsqueeze(1)).log().squeeze(1)
 

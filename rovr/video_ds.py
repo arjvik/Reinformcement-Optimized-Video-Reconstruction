@@ -17,24 +17,24 @@ class VideoDataset(Dataset):
         mask = np.ones_like(frame)
 
         section_height = h // 3
-        slice_width = w // 16
+        slice_width = w // 8
 
-        section_idx = frame_index // 16  # find the section index
-        slice_idx = frame_index % 16  # find the slice index within the section
+        section_idx = frame_index // 8  # find the section index
+        slice_idx = frame_index % 8  # find the slice index within the section
 
         raster_center_x = slice_idx * slice_width + slice_width // 2
         raster_center_y = section_idx * section_height + section_height // 2
 
         # apply random jitter to the center point
-        jitter_x = random.randint(-25, 25)
-        jitter_y = random.randint(-125, 125)
+        jitter_x = random.randint(-25 // 2, 25 // 2)
+        jitter_y = random.randint(-125 // 2, 125 // 2)
         raster_center_x += jitter_x
         raster_center_y += jitter_y
 
-        start_x = max(0, raster_center_x - 225 // 2)
-        end_x = min(w, start_x + 225)
-        start_y = max(0, raster_center_y - 125 // 2)
-        end_y = min(h, start_y + 125)
+        start_x = max(0, raster_center_x - (225 // 2) // 2)
+        end_x = min(w, start_x + 225 // 2)
+        start_y = max(0, raster_center_y - (125 // 2) // 2)
+        end_y = min(h, start_y + 125 // 2)
 
         mask[start_y:end_y, start_x:end_x, :] = 0
         corrupted_frame = frame * mask
@@ -53,7 +53,7 @@ class VideoDataset(Dataset):
         left_video = []
         right_video = []
 
-        for i in range(25):
+        for i in range(0, 50, 2):
             frame_path = os.path.join(video_folder, frames[i])
             frame = cv2.imread(frame_path)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

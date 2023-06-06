@@ -18,7 +18,7 @@ class PolicyNetwork2(nn.Module):
         self.num_channels = 3
         self.num_heads = 4
         self.is_critic = is_critic
-        self.temperature = .5
+        self.temperature = .7
         
         if not self.is_critic:
             self.encoder_layers = 3
@@ -60,8 +60,6 @@ class PolicyNetwork2(nn.Module):
         std = image.std(dim=1, keepdim=True)
         normalized_image = (image - mean) / std
         logits = self.fc(normalized_image)
-        # print(f"{logits.mean(dim=1)=}, {logits.std(dim = 1, keepdim = True)=}")
-        # logits = (logits - logits.mean(dim = 1))/(logits.std(dim = (1, ), keepdim = True) + .1)
         return logits
 
     def forward(self, image, context, target):
@@ -69,25 +67,38 @@ class PolicyNetwork2(nn.Module):
             logits = self.compute_logits(image, context, target)
             
             logits.scatter_(1, target, 0)
-            print("TOPK BEFORE SOFTMAX:", torch.topk(logits, k=2, dim = 1))
+            logits = (logits - logits.mean(dim = 1))/(logits.std(dim = (1, ), keepdim = True) + .1)
+
+            # print("TOPK BEFORE SOFTMAX:", torch.topk(logits, k=2, dim = 1).values)
             probs = F.gumbel_softmax(logits, tau = self.temperature, hard = False, dim=1)
             topk = torch.topk(probs, k=2, dim=1)
-            print(f"{topk=}")
-            logprob = topk.values.log().sum(1) + math.log(2)
+            # print(f"{topk.values=}, {topk.values.log()}")
+            logprob = (topk.values.log().sum(1))/2 + 0.69314
             return topk.indices.detach(), logprob.detach()
         else:
             logits = self.compute_logits(image, context, target)
+            # logits = (logits - logits.mean(dim = 1))/(logits.std(dim = (1, ), keepdim = True) + .1)
             return logits.squeeze(1) # not really logits
 
     def logprob(self, image, context, target, action):
         if self.is_critic:
             raise Exception("DO NOT CALL LOGPROB FOR CRITIC")
+#         mean = image.mean(dim=0, keepdim=True)
+#         std = image.std(dim=0, keepdim=True)
+#         normalized_image = (image - mean) / std
+        
+#         mean = context.mean(dim=0, keepdim=True)
+#         std = context.std(dim=0, keepdim=True)
+#         normalized_context = (context - mean) / std
+        
         logits = self.compute_logits(image, context, target)
+        # print(f"{logits.mean(dim = 1)[:3]=}, {logits.std(dim = 1)[:3]=}")
         logits.scatter_(1, target, 0)
+        # logits = (logits - logits.mean(dim = 1))/(logits.std(dim = (1, ), keepdim = True) + .1)
         probs = F.gumbel_softmax(logits, tau = self.temperature, hard = False, dim=1)
         pairedprobs = rearrange(torch.matmul(probs.unsqueeze(2), probs.unsqueeze(1)), 'b i j -> b (i j)', i=self.output_size, j=self.output_size)
         action = action[:, 0]*self.output_size+action[:, 1]
-        return pairedprobs.gather(1, action.unsqueeze(1)).log().sum(1) + 0.69314
+        return (pairedprobs.gather(1, action.unsqueeze(1)).log().sum(1))/2 + 0.69314
     
     def patchify_image(self, img):
         patches = rearrange(img, 'b c (hp ph) (wp pw) -> b (hp wp) (c ph pw)', ph=self.patch_size, pw=self.patch_size)
