@@ -258,6 +258,9 @@ class ROVR(nn.Module):
             critic_optim = self.critic2_optimizer
             actor_losses = self.logger['actor2_losses']
             critic_losses = self.logger['critic2_losses']
+        else:
+            raise Exception("no bad")
+        
 
         obs, acs, log_prob, rtgs = info                
         V = critic(*obs)
