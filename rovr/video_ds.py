@@ -12,7 +12,7 @@ class VideoDataset(Dataset):
         self.transform = transform
         self.subfolders = sorted([d for d in os.listdir(root_folder) if os.path.isdir(os.path.join(root_folder, d))])
 
-    def corrupt_frame(self, frame, frame_index):
+    def corrupt_frame(self, frame, frame_index, difficulty = 0):
         h, w, _ = frame.shape
         mask = np.ones_like(frame)
 

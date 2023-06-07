@@ -58,7 +58,7 @@ for i, batch in enumerate(ds):
     frames = frames.to(device)
     masks = masks.to(device)    
     
-    rover.train(corrupted_frames, frames)
+    rover.train(corrupted_frames, frames, i)
     
     logger.log(rover.logger)
     

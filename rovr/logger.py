@@ -1,6 +1,8 @@
 import os
 import time
 from torch.utils.tensorboard import SummaryWriter
+import torchvision.transforms as transforms
+import numpy as np
 
 class Logger:
     def __init__(self):
@@ -19,18 +21,28 @@ class Logger:
         # Increment episode count
         self.episodes += 1
 
-        # Calculating averages for episode based logging
-        averages = {k: sum(v) / len(v) for k, v in data.items()}
-
         # Log values based on steps
         for key, values in data.items():
-            for value in values:
-                self.writer.add_scalar(f'Steps/{key}', value, self.steps)
-                self.steps += 1
+            if key == "image":
+                img = data[key].numpy()  # Assuming images are torch tensors
+                self.writer.add_image(f'Image/{key}', img, self.steps)
+            elif key == "selected_frame" or key == "context_frames":
+                continue  # Skip these here, we handle them separately below
+            elif isinstance(values, list) and all(isinstance(i, (int, float)) for i in values):
+                for value in values:
+                    self.writer.add_scalar(f'Steps/{key}', value, self.steps)
+                    self.steps += 1
 
-        # Log values based on episodes
-        for key, value in averages.items():
-            self.writer.add_scalar(f'Episodes/{key}', value, self.episodes)
+        # Handle frame data and log it
+        selected_frame = data.get('selected_frame')
+        context_frames = data.get('context_frames')
+        if selected_frame is not None and context_frames is not None:
+            for i in range(len(selected_frame)):
+                frame_text = f"Target frame: {selected_frame[i]}, Context frames: {context_frames[i][0]}, {context_frames[i][1]}"
+                self.writer.add_text('Frames', frame_text, self.steps)
+                self.steps += 1  # Increment step for each frame set logged
+
+
 
     def close(self):
         self.writer.close()
