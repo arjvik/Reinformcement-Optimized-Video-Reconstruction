@@ -11,12 +11,8 @@ from tqdm import tqdm
 import numpy as np
 import lpips
 
-from video_ds_2 import VideoDataset2
-from local_net_unet_norm import LocalNetworkUNetNorm ##CHANGED FROM VIT VERSION
-from action_lstm import ActionLSTM
-from policy_net_1 import PolicyNetwork1
-from policy_net_2 import PolicyNetwork2
-from resnet_extractor import ResnetFeatureExtractor
+from video_ds import VideoDataset2
+from local_net import LocalNetworkUNetNorm ##CHANGED FROM VIT VERSION
 
 import random
 import time
@@ -130,4 +126,3 @@ for i, (frame, context1, context2, target) in tqdm(enumerate(cycle(image_ds))):
             'mse_loss': mse_loss.detach(),
             'lpips_loss': lpips_loss.detach(),
             }, path / 'checkpoints' / f'{i}.pt')
-        

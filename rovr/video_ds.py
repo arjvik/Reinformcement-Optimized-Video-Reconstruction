@@ -6,40 +6,89 @@ from torchvision.transforms import functional as F
 from torch.utils.data import Dataset, DataLoader
 import random
 
-class VideoDataset(Dataset):
-    def __init__(self, root_folder, transform=None):
+class VideoDataset2(Dataset):
+    def __init__(self, root_folder, transform=None, difficulty = 2):
         self.root_folder = root_folder
         self.transform = transform
         self.subfolders = sorted([d for d in os.listdir(root_folder) if os.path.isdir(os.path.join(root_folder, d))])
+        self.brightness = 40
+        self.noise = 20
+        self.difficulty = difficulty
 
-    def corrupt_frame(self, frame, frame_index, difficulty = 0):
+    def corrupt_frame(self, frame, frame_index):
+        frame_index = frame_index // 2
+        h, w, _ = frame.shape
+        mask = np.ones_like(frame)
+        
+        if self.difficulty >= 2:
+            n = random.randint(0, 4) 
+            if n < 1:
+                corrupted_frame = np.clip(frame+self.brightness, 0, 255)
+                return corrupted_frame, mask
+            if n < 2:
+                noise_matrix = np.random.randint(-self.noise, self.noise, frame.shape, dtype=np.int32)
+                corrupted_frame = np.clip(frame.astype(np.int32) + noise_matrix, 0, 255).astype(np.uint8)
+                return corrupted_frame, mask
+        if self.difficulty > 0:
+            for i in range(1):
+                section_height = h // 3
+                slice_width = w // 8
+
+                extra_frame_index = random.randint(0, 100) // 2
+
+                section_idx = extra_frame_index // 8  # find the section index
+                slice_idx = extra_frame_index % 8  # find the slice index within the section
+
+                raster_center_x = slice_idx * slice_width + slice_width // 2
+                raster_center_y = section_idx * section_height + section_height // 2
+
+                # apply random jitter to the center point
+                jitter_x = random.randint(-25 // 2, 25 // 2)
+                jitter_y = random.randint(-125 // 2, 125 // 2)
+                raster_center_x += jitter_x
+                raster_center_y += jitter_y
+
+                start_x = max(0, raster_center_x - (225 // 2) // 2)
+                end_x = min(w, start_x + 225 // 2)
+                start_y = max(0, raster_center_y - (125 // 2) // 2)
+                end_y = min(h, start_y + 125 // 2)
+
+                mask[start_y:end_y, start_x:end_x, :] = 0
+
         h, w, _ = frame.shape
         mask = np.ones_like(frame)
 
-        section_height = h // 3
-        slice_width = w // 8
 
-        section_idx = frame_index // 8  # find the section index
-        slice_idx = frame_index % 8  # find the slice index within the section
+        # Define the number of frames per section
+        frames_per_section = 8
 
-        raster_center_x = slice_idx * slice_width + slice_width // 2
-        raster_center_y = section_idx * section_height + section_height // 2
+        # Calculate the section index based on the current frame index
+        section_idx = frame_index // frames_per_section 
 
-        # apply random jitter to the center point
-        jitter_x = random.randint(-25 // 2, 25 // 2)
-        jitter_y = random.randint(-125 // 2, 125 // 2)
-        raster_center_x += jitter_x
-        raster_center_y += jitter_y
+        # Calculate the horizontal position of the box within the section
+        position_idx = frame_index % frames_per_section
 
-        start_x = max(0, raster_center_x - (225 // 2) // 2)
-        end_x = min(w, start_x + 225 // 2)
-        start_y = max(0, raster_center_y - (125 // 2) // 2)
-        end_y = min(h, start_y + 125 // 2)
+        # Calculate the vertical start and end points of the box
+        start_y = section_idx * h // 3
+        end_y = start_y + 100
 
+        # Calculate the horizontal start and end points of the box
+        start_x = position_idx * w // 8
+        end_x = start_x + 150
+
+        # Ensure the box does not go beyond the frame boundaries
+        start_x, end_x = max(0, start_x), min(w, end_x)
+        start_y, end_y = max(0, start_y), min(h, end_y)
+
+        # Set the box area in the mask to 0
         mask[start_y:end_y, start_x:end_x, :] = 0
+
+        # Apply the mask to the frame to create the corrupted frame
         corrupted_frame = frame * mask
 
         return corrupted_frame, mask
+
+        
 
 
     def __len__(self):
