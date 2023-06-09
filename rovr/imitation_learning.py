@@ -78,3 +78,10 @@ for epoch, (video, _, masks, positive, negative) in enumerate(tqdm(cycle(ds))):
     pn2_optimizer.zero_grad()
     loss.backward()
     pn2_optimizer.step()
+    if (epoch % 3000) == 0:
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': pn2.state_dict(),
+            'optimizer_state_dict': pn2_optimizer.state_dict(),
+            'loss': loss.detach(),
+        }, path / 'checkpoints' / f'{epoch}.pt')
