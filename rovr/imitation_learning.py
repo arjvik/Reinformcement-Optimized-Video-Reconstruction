@@ -28,7 +28,7 @@ def clamp(x, a, b): return x if a <= x <= b else (a if a > x else b)
 
 def load_video_dataset(root_folder, num_workers):
     dataset = VideoDatasetExplicit(root_folder)
-    return DataLoader(dataset, batch_size=1, num_workers=num_workers, shuffle = True)
+    return DataLoader(dataset, batch_size=None, num_workers=num_workers, shuffle = True)
 
 ds = load_video_dataset("out/LQ", num_workers = 32)
 
