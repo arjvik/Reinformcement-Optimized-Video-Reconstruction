@@ -6,7 +6,7 @@ from torchvision.transforms import functional as F
 from torch.utils.data import Dataset, DataLoader
 import random
 
-class VideoDataset2(Dataset):
+class VideoDatasetExplicit(Dataset):
     def __init__(self, root_folder, transform=None, difficulty = 2):
         self.root_folder = root_folder
         self.transform = transform
@@ -31,7 +31,7 @@ class VideoDataset2(Dataset):
             [f[18], f[19]]
         ]
     def __len__(self):
-        return len(self.subfolders) * 2 # each folder corresponds to two videos
+        return 10 if 'DEBUG_SHORT_DATASET' in os.environ else len(self.subfolders) * 2 # each folder corresponds to two videos
 
     def corrupt_mask(self, frame, frame_index, mask):
         h, w, _ = frame.shape

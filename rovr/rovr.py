@@ -17,7 +17,7 @@ from local_net import LocalNetworkUNetNorm ##CHANGED FROM VIT VERSION
 from itertools import chain
 from pathlib import Path
 import time
-from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard.writer import SummaryWriter
 
 
 class ROVR(nn.Module):
