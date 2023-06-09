@@ -68,5 +68,5 @@ class LocalNetworkUNetNorm(nn.Module):
         x = nn.functional.relu(self.bn7(self.conv7(x)))
         
         # Output layer
-        x = self.conv8(x)
+        x = nn.functional.sigmoid(self.conv8(x))
         return x

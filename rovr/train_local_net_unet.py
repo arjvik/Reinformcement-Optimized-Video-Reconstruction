@@ -92,7 +92,7 @@ lpips_loss_fn = lpips.LPIPS(net='vgg').to(device)
 
 image_ds = load_image_dataset(video, orig_video, batch_size=24)
 
-path = Path('runs') / 'local_net_baseline' / 'unet_lpips_norm' / 'gamma:.9993_difficulty:1' / time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
+path = Path('runs') / 'local_net_sigmoid' / 'baseline' / time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
 (path / 'checkpoints').mkdir(parents=True)
 
 writer = SummaryWriter(log_dir=path, flush_secs=10)
@@ -102,7 +102,6 @@ writer.add_graph(local_net, (next(iter(image_ds))[0].to(device), torch.stack(nex
 for i, (frame, context1, context2, target) in tqdm(enumerate(cycle(image_ds))):
     local_net_optimizer.zero_grad()
     image = frame.to(device), torch.stack([context1, context2], dim = 1).to(device)
-    print(frame.shape, image[1].shape)
     y_hat = local_net(*image)
     cuda_target = target.to(device)
     mse_loss = mse_loss_fn(y_hat, cuda_target).mean()
