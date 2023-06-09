@@ -67,7 +67,7 @@ writer = SummaryWriter(log_dir=path, flush_secs=10)
 for epoch, (video, _, masks, positive, negative) in enumerate(tqdm(cycle(ds))):
     encoded_frames = video_encoder.resnet(torch.stack([video_encoder.preprocessing(f) for f in video], dim=0).to(device)).squeeze(2).squeeze(2)
     outputs = pn2.get_masked_logits(encoded_frames, video.to(device), torch.arange(20).unsqueeze(1).to(device)).sigmoid()
-    loss = torch.tensor(0).to(device)
+    loss = torch.tensor(0).float().to(device)
     for i in range(positive.shape[1]):
         ans = torch.nn.functional.one_hot(positive[:, i].to(torch.int64), num_classes=20).sum(dim=1)
         loss += torch.nn.functional.binary_cross_entropy(outputs, ans.float().to(device))
