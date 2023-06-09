@@ -79,6 +79,7 @@ class VideoDataset2(Dataset):
         self.new_random()
         frame_masks = self.choose_frame_masks()
         solutions = self.generate_solutions()
+        negative_solutions = self.generate_negative_solutions()
 
         left_video = []
         right_video = []
@@ -108,7 +109,7 @@ class VideoDataset2(Dataset):
         else:
             corrupted_frames, frames, masks = zip(*right_video)
 
-        return torch.from_numpy(np.array(corrupted_frames)).permute(0, 3, 1, 2) / 255, torch.from_numpy(np.array(frames)).permute(0, 3, 1, 2) / 255, torch.from_numpy(np.array(masks)).permute(0, 3, 1, 2) / 255, torch.from_numpy(solutions)
+        return torch.from_numpy(np.array(corrupted_frames)).permute(0, 3, 1, 2) / 255, torch.from_numpy(np.array(frames)).permute(0, 3, 1, 2) / 255, torch.from_numpy(np.array(masks)).permute(0, 3, 1, 2) / 255, torch.from_numpy(solutions), torch.from_numpy(negative_solutions)
 
     def choose_frame_masks(self):
         frame_masks = []
@@ -126,7 +127,9 @@ class VideoDataset2(Dataset):
             elif i in self.helper[5]:
                 frame_masks.append([self.l[0], self.l[2], self.l[4], self.l[6]])
         return np.array(frame_masks)
-    
+    def generate_neg_solutions(self):
+        neg_solutions = np.empty((20, 8, 2))
+
     def generate_solutions(self):
         solutions = np.empty((20, 32, 2))
         for i in range(20):
@@ -169,3 +172,46 @@ class VideoDataset2(Dataset):
                     np.array([[q, p] for p in self.helper[0] for q in self.helper[2]]), 
                     ), axis = 0)
         return solutions
+    
+    def generate_negative_solutions(self):
+        neg_solutions = np.empty((20, 16, 2))
+        for i in range(20):
+            for j in range(4):
+                if i in self.helper[j]:
+                    temp = self.helper[j].copy()
+                    temp.remove(i)
+                    neg_solutions[i] = np.concatenate((
+                        np.array([  [temp[0], temp[1]],
+                                    [temp[0], temp[2]],
+                                    [temp[1], temp[0]],
+                                    [temp[1], temp[2]],
+                                    [temp[2], temp[0]],
+                                    [temp[2], temp[1]],
+                                    ]),
+                        np.array([[p, self.helper[(i+1)%4][l]] for p in temp[:2] for l in range(2)]),
+                        np.array([[self.helper[(i+1)%4][l], p] for p in temp[:2] for l in range(2)]),
+                        np.array([[temp[2], self.helper[(i+1)%4][0]]]),
+                        np.array([[self.helper[(i+1)%4][0], temp[2]]]),
+                        ), axis = 0)
+            if i in self.helper[4]:
+                temp = self.helper[4].copy()
+                temp.remove(i)
+                neg_solutions[i] = np.concatenate((
+                    np.array([[p, q] for p in temp for q in self.helper[1]]),
+                    np.array([[q, p] for p in temp for q in self.helper[1]]),
+                    np.array([[p, q] for p in temp for q in self.helper[2]]),
+                    np.array([[q, p] for p in temp for q in self.helper[2]]) 
+                    ), axis = 0)
+            if i in self.helper[5]:
+                temp = self.helper[5].copy()
+                temp.remove(i)
+                neg_solutions[i] = np.concatenate((
+                    np.array([[p, q] for p in temp for q in self.helper[2]]),
+                    np.array([[q, p] for p in temp for q in self.helper[2]]), 
+                    np.array([[p, q] for p in temp for q in self.helper[1]]),
+                    np.array([[q, p] for p in temp for q in self.helper[1]])
+                    ), axis = 0)
+        return neg_solutions
+        
+
+                
