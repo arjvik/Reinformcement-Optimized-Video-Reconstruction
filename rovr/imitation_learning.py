@@ -65,7 +65,6 @@ path = Path('runs') / 'warm_start' / 'pn2' / 'immitation_learning' / time.strfti
 writer = SummaryWriter(log_dir=path, flush_secs=10)
 
 for epoch, (video, _, masks, positive, negative) in enumerate(tqdm(cycle(ds))):
-    print(f"{positive.shape=} {negative.shape=}")
     encoded_frames = video_encoder.resnet(torch.stack([video_encoder.preprocessing(f) for f in video], dim=0).to(device)).squeeze(2).squeeze(2)
     outputs = pn2.get_masked_logits(encoded_frames, video.to(device), torch.arange(20).unsqueeze(1).to(device)).sigmoid()
     loss = torch.tensor(0)
