@@ -10,8 +10,9 @@ import math
 class PolicyNetwork2UNet(nn.Module):
     def __init__(self, is_critic=False):
         super(PolicyNetwork2UNet, self).__init__()
-        self.num_composed_frames = 20
-        self.output_size = self.num_composed_frames
+        self.num_frames = 20
+        self.k = 2
+        self.output_size = math.comb(self.num_frames, self.k)
         self.context_size = 256
         self.num_channels = 3
         self.is_critic = is_critic
@@ -47,10 +48,32 @@ class PolicyNetwork2UNet(nn.Module):
         self.final_fc = nn.Sequential(
             nn.Linear(512 + 512, 256),
             nn.Linear(256, 64),
-            nn.Linear(64, self.output_size)
+            nn.Linear(64, self.output_size if not self.is_critic else 1)
         )
         
-    def compute_logits(self, x, context, device = None):
+        self.idxmap = torch.zeros((self.output_size, self.num_frames))
+        self.idxmask = torch.ones((self.num_frames, self.output_size))
+        for i, (a, b) in enumerate((a,b) for a in range(self.num_frames) for b in range(a+1, self.num_frames)):
+            self.idxmap[i][a] = 1
+            self.idxmap[i][b] = 1
+            self.idxmask[a][i] = 0
+            self.idxmask[b][i] = 0
+        
+        
+    def indices_to_index(self, a, b, device = None):
+        """
+        Takes two values 0 <= a < b < self.num_frames and outputs a combo index 0 <= idx < nCr(self.num_frames, self.k)
+        Clever math trick - derivation thrown away
+        """
+        return a*(2*self.num_frames-a-3)//2+b-1
+    def index_to_indices(self, i, device):
+        """
+        Takes combo index and gives two-vector of frame indices
+        """
+        #return self.idxmap.to(device)[i].argwhere().squeeze(1)
+        return torch.topk(self.idxmap.to(device)[i], k=self.k).indices
+    
+    def compute_logits(self, x, context, device):
         """
         x: (b, 2048)
         context: (b, 3, 256, 256)
@@ -60,39 +83,29 @@ class PolicyNetwork2UNet(nn.Module):
         image_out = self.image_conv(context)
         stacked = torch.cat([vector_out, image_out], dim = 1)
         return self.final_fc(stacked)
-
-    def forward(self, image, context, target, device = None):
-        if not self.is_critic:
-            logits = self.get_masked_logits(image, context, target, device)
-            # print("TOPK BEFORE SOFTMAX:", torch.topk(logits, k=2, dim = 1).values)
-            probs = F.gumbel_softmax(logits, tau = self.temperature, hard = False, dim=1)
-            topk = torch.topk(probs, k=2, dim=1)
-            # print(f"{topk.values=}, {topk.values.log()}")
-            logprob = (topk.values.log().sum(1))/2 + 0.69314
-            return topk.indices.detach(), logprob.detach()
-        else:
-            logits = self.compute_logits(image, context, device)
-            return logits.squeeze(1) # not really logits
     
-    def get_masked_logits(self, image, context, target, device = None):
-        if self.is_critic:
-            raise Exception("DO NOT CALL get_masked_logits FOR CRITIC")
-            
+    def forward(self, image, context, target, device):
         logits = self.compute_logits(image, context, device)
-
-        logits.scatter_(1, target, 0)
-        logits = (logits - logits.mean(dim = 1))/(logits.std(dim = (1, ), keepdim = True) + .1)
-
-        return logits
-        
-
-    def logprob(self, image, context, target, action):
+        if self.is_critic:
+            return logits.squeeze(1)
+        logits = logits * self.idxmask.to(device)[target.squeeze(1)]
+        probs = F.gumbel_softmax(logits, tau = self.temperature, hard = False, dim=1).max(dim=1)
+        return self.index_to_indices(probs.indices, device=device), probs.values
+    
+    def logprob(self, image, context, target, action, device):
         if self.is_critic:
             raise Exception("DO NOT CALL LOGPROB FOR CRITIC")
-        
-        logits = self.compute_logits(image, context)
-        logits.scatter_(1, target, 0)
+        logits = self.compute_logits(image, context, device)
+        logits = logits * self.idxmask.to(device)[target.squeeze(1)]
+        logprobs = F.gumbel_softmax(logits, tau = self.temperature, hard = False, dim=1).log()
+        return logprobs.gather(1, self.indices_to_index(action[:, 0], action[:, 1], device).unsqueeze(1)).squeeze(1)
+    
+    def get_raw_probs(self, image, context, target, device):
+        if self.is_critic:
+            raise Exception("DO NOT CALL GETRAWPROBS FOR CRITIC")
+        logits = self.compute_logits(image, context, device)
+        logits = logits * self.idxmask.to(device)[target.squeeze(1)]
         probs = F.gumbel_softmax(logits, tau = self.temperature, hard = False, dim=1)
-        pairedprobs = rearrange(torch.matmul(probs.unsqueeze(2), probs.unsqueeze(1)), 'b i j -> b (i j)', i=self.output_size, j=self.output_size)
-        action = action[:, 0]*self.output_size+action[:, 1]
-        return (pairedprobs.gather(1, action.unsqueeze(1)).log().sum(1))/2 + 0.69314
+        return probs
+        
+                    
