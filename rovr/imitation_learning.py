@@ -24,6 +24,9 @@ from pathlib import Path
 
 from GPUtil import showUtilization as gpu_usage, getAvailable
 
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 def clamp(x, a, b): return x if a <= x <= b else (a if a > x else b)
 
 def load_video_dataset(root_folder, num_workers):
