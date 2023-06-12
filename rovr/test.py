@@ -71,6 +71,10 @@ for i, batch in enumerate(ds):
     print(torch.cuda.memory_allocated(device)/(1024 ** 3))
     
     optical_flow_by_frame, exp_optical_flow_by_frame, org_optical_flow_by_frame, corrupted_optical_flow_by_frame = rover.train(corrupted_frames, frames, i, device)
+    
+    if i == 400:
+        break
+    
     # cosine_similarities_rl = [cosine_similarity(org, rl) for org, rl in zip(org_optical_flow_by_frame, optical_flow_by_frame)]
     # cosine_similarities_exp = [cosine_similarity(org, exp) for org, exp in zip(org_optical_flow_by_frame, exp_optical_flow_by_frame)]
 

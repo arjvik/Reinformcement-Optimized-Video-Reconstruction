@@ -59,7 +59,7 @@ class ROVR(nn.Module):
         self.local_net_optimizer = torch.optim.Adam(self.local_net.parameters(), lr=2e-4)
         self.video_processor = VideoProcessor()
 
-        self.tensorboard_path = Path('tandon_runs2') / 'rovr' / 'yay' / time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
+        self.tensorboard_path = Path('tandon_runs3') / 'rovr' / 'yay' / time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
         (self.tensorboard_path / 'checkpoints').mkdir(parents=True)
         self.writer = SummaryWriter(log_dir=self.tensorboard_path, flush_secs=10)
 
@@ -222,11 +222,11 @@ class ROVR(nn.Module):
             exp_optical_flow, exp_optical_flow_by_frame = self.calculate_optical_flow(exp_reconstructed_video.squeeze(0).float())
             
             
-            spatio_loss = (abs(optical_flow - corrupted_optical_flow) - abs(org_optical_flow - optical_flow))/9000
-
-            print("BIG BOY REWARD = ", spatio_loss) 
+            # spatio_loss = (abs(optical_flow - corrupted_optical_flow) - abs(org_optical_flow - optical_flow))/9000
+            spatio_loss = (1 - (abs(optical_flow - org_optical_flow) / abs(corrupted_optical_flow - org_optical_flow))) * 4
+            print("BIG BOY REWARD = ", spatio_loss)
             #increase distance from corrupted optical flow and decrease distance from original optical flow
-            rewards[-1] = rewards[-1] + spatio_loss
+            # rewards[-1] = rewards[-1] - spatio_loss
             print(f"{optical_flow=}, {corrupted_optical_flow=}, {org_optical_flow=}")
             rtg = self.compute_rewards_to_go(rewards, local_device)
             #### IF WE GET DATAPARALLEL DEVICE ERROR THIS IS THE CULPRIT
