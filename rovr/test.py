@@ -1,5 +1,5 @@
 from rovr import ROVR
-from video_ds import VideoDataset2
+from video_ds_explicit import VideoDatasetExplicit
 from GPUtil import showUtilization as gpu_usage, getAvailable
 
 import numpy as np
@@ -37,7 +37,7 @@ rover = ROVR(vid_length=args.vid_length, time_steps=args.time_steps, n_updates_p
 rover = parallel_and_device(rover, device)
 
 def load_dataset(root_folder, batch_size=1, num_workers=0, transform=None):
-    dataset = VideoDataset2(root_folder, transform=transform, difficulty=2)
+    dataset = VideoDatasetExplicit(root_folder, transform=transform, difficulty=2)
     return DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle = True)
 
 def calculate_preservation(org_values, computed_values):
@@ -64,26 +64,26 @@ ds = load_dataset("out/LQ", batch_size = BATCH_SIZE, num_workers = 32)
 for i, batch in enumerate(ds):
     print("-----------------------ITERATION-----------------------", i)
     print(torch.cuda.memory_allocated(device)/(1024 ** 3))
-    corrupted_frames, frames, masks = batch
+    corrupted_frames, frames, masks, _, _ = batch
     corrupted_frames = corrupted_frames.to(device)
     frames = frames.to(device)
     masks = masks.to(device)    
     print(torch.cuda.memory_allocated(device)/(1024 ** 3))
     
-    optical_flow_by_frame, exp_optical_flow_by_frame, org_optical_flow_by_frame, corrupted_optical_flow_by_frame = rover.train(corrupted_frames, frames, i, device)
-    cosine_similarities_rl = [cosine_similarity(org, rl) for org, rl in zip(org_optical_flow_by_frame, optical_flow_by_frame)]
-    cosine_similarities_exp = [cosine_similarity(org, exp) for org, exp in zip(org_optical_flow_by_frame, exp_optical_flow_by_frame)]
+    # optical_flow_by_frame, exp_optical_flow_by_frame, org_optical_flow_by_frame, corrupted_optical_flow_by_frame = rover.train(corrupted_frames, frames, i, device)
+    # cosine_similarities_rl = [cosine_similarity(org, rl) for org, rl in zip(org_optical_flow_by_frame, optical_flow_by_frame)]
+    # cosine_similarities_exp = [cosine_similarity(org, exp) for org, exp in zip(org_optical_flow_by_frame, exp_optical_flow_by_frame)]
 
     
-    print("RL PRES", cosine_similarities_rl)
-    print("RL NON PRES", cosine_similarities_exp)
+#     print("RL PRES", cosine_similarities_rl)
+#     print("RL NON PRES", cosine_similarities_exp)
 
     
-    print("THIS IS OUR FLOW SHAPE", len(optical_flow))
+    # print("THIS IS OUR FLOW SHAPE", len(optical_flow))
     
     if i % 50 == 0:
         torch.save({
             'epoch': i,
             'model_state_dict': rover.state_dict(),
-            'optimizers_state_dict': [rover.actor1_optimizer.state_dict(), rover.critic1_optimizer.state_dict(), rover.actor2_optimizer.state_dict(), rover.critic2_optimizer.state_dict(), rover.local_net_optimizer.state_dict()],
+            'optimizers_state_dict': [rover.actor2_optimizer.state_dict(), rover.critic2_optimizer.state_dict(), rover.local_net_optimizer.state_dict()],
         }, rover.tensorboard_path / 'checkpoints' / f'{i}.pt')

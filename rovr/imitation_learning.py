@@ -16,6 +16,7 @@ from einops import rearrange, repeat
 from video_ds_explicit import VideoDatasetExplicit
 from policy_net_2 import PolicyNetwork2UNet
 from resnet_extractor import ResnetFeatureExtractor
+from video_processor import VideoProcessor
 
 import random
 import time
@@ -54,33 +55,50 @@ def get_available_device():
 device = get_available_device()
 pn2 = parallel_and_device(pn2, device)
 video_encoder = parallel_and_device(video_encoder, device)
+video_processor = VideoProcessor()
 
 
 mse_loss_fn = torch.nn.MSELoss().to(device)
 lpips_loss_fn = lpips.LPIPS(net='vgg').to(device)
 
-path = Path('runs') / 'warm_start' / 'pn2' / 'immitation_learning_gradcontr:1.5' / time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
+path = Path('runs') / 'warm_start' / 'pn2' / 'immitation_learning_32_2' / time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
 (path / 'checkpoints').mkdir(parents=True)
 
 writer = SummaryWriter(log_dir=path, flush_secs=10)
-
 for epoch, (video, _, masks, positive, negative) in enumerate(tqdm(cycle(ds))):
-    encoded_frames = video_encoder(torch.stack([video_encoder.preprocessing(f) for f in video], dim=0).to(device).unsqueeze(0))#.squeeze(2).squeeze(2)
-    print("ENCODED FRAMES SHAPE", encoded_frames.shape)
+    print("VIDEO SHAPE", video.shape)
+    print("WHAT", (torch.stack([video_encoder.preprocessing(f) for f in video], dim=0).to(device).unsqueeze(0)).shape)
+    
+    stacked_frames = torch.stack([video_encoder.preprocessing(f) for f in video], dim=0).to(device).unsqueeze(0)
+    
+    # encoded_frames = video_encoder(torch.stack([video_encoder.preprocessing(f) for f in video], dim=0).to(device).unsqueeze(0))#.squeeze(2).squeeze(2)
+        
+        
+    print("STACKED FRAMES SHAPE", stacked_frames.shape)
+    encoded_frames, flattened_frames = video_processor(stacked_frames)
+        
+    print("TEST FRAMES", encoded_frames.shape)
+    print("FLAT FRAMES SHAPE", flattened_frames.shape)
+    
     encoded_frames = torch.stack([encoded_frames]*20, dim = 0).squeeze(1)
-    print("STACKED ENCODED FRAMES SHAPE", encoded_frames.shape)
-    outputs = pn2(encoded_frames, video.to(device), torch.arange(20).unsqueeze(1).to(device), extra = True).sigmoid()
+    
+    
+    print("STACKED ENCODED FRAMES SHAPE", encoded_frames.min(), encoded_frames.max())
+    outputs = pn2(encoded_frames, flattened_frames.to(device), torch.arange(20).unsqueeze(1).to(device), extra = True)
     loss = torch.tensor(0).float().to(device)
     for i in range(positive.shape[1]):
-        ans = torch.nn.functional.one_hot(positive[:, i].to(torch.int64), num_classes=20).sum(dim=1)
-        loss += torch.nn.functional.binary_cross_entropy(outputs, ans.float().to(device)) * 1.5 # play with gradient contribution
+        ans = torch.nn.functional.one_hot(positive[:, i].to(torch.int64), num_classes=20).sum(dim=1)    
+        loss += torch.nn.functional.binary_cross_entropy_with_logits(outputs, ans.float().to(device)) * 1.5 # play with gradient contribution
     for i in range(negative.shape[1]):
         ans = torch.nn.functional.one_hot(negative[:, i].to(torch.int64), num_classes=20).sum(dim=1)
-        loss -= torch.nn.functional.binary_cross_entropy(outputs, ans.float().to(device))
+        loss -= torch.nn.functional.binary_cross_entropy_with_logits(outputs, ans.float().to(device))
+
+    
     writer.add_scalar('Loss/expert_loss', loss.detach(), epoch)
     pn2_optimizer.zero_grad()
     loss.backward()
     pn2_optimizer.step()
+    print("LOSS", loss.item())
     if (epoch % 3000) == 0:
         torch.save({
             'epoch': epoch,
