@@ -34,7 +34,7 @@ def load_video_dataset(root_folder, num_workers):
 ds = load_video_dataset("out/LQ", num_workers = 32)
 
 pn2 = PolicyNetwork2UNet()
-pn2_optimizer = torch.optim.Adam(pn2.parameters(), lr=1e-4)
+pn2_optimizer = torch.optim.Adam(pn2.parameters(), lr=2e-4)
 
 video_encoder = ResnetFeatureExtractor(pretrained = True)
 
@@ -61,7 +61,7 @@ video_processor = VideoProcessor()
 mse_loss_fn = torch.nn.MSELoss().to(device)
 lpips_loss_fn = lpips.LPIPS(net='vgg').to(device)
 
-path = Path('runs') / 'warm_start' / 'pn2' / 'immitation_learning_32_2' / time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
+path = Path('runs') / 'warm_start' / 'pn2' / 'immitation_learning_tandon' / time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
 (path / 'checkpoints').mkdir(parents=True)
 
 writer = SummaryWriter(log_dir=path, flush_secs=10)
@@ -99,7 +99,7 @@ for epoch, (video, _, masks, positive, negative) in enumerate(tqdm(cycle(ds))):
     loss.backward()
     pn2_optimizer.step()
     print("LOSS", loss.item())
-    if (epoch % 3000) == 0:
+    if (epoch % 250) == 0:
         torch.save({
             'epoch': epoch,
             'model_state_dict': pn2.state_dict(),

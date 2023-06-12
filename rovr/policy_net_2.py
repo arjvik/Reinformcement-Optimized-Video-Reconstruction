@@ -18,20 +18,20 @@ class PolicyNetwork2UNet(nn.Module):
             self.output_size = self.num_composed_frames
         self.context_size = 256
         self.num_channels = 1
-        
+
         self.temperature = .7
         self.num_resnet_features = 2048
 
 
         # Define the layers for processing the image
         self.context_conv = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(3, 128, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=8, stride=8),
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=4, stride=4),
-            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=4, stride=4),
             nn.Flatten()
@@ -39,16 +39,20 @@ class PolicyNetwork2UNet(nn.Module):
 
         # Define the layers for processing the b 1 160 160
         self.video_conv = nn.Sequential(
-            nn.Conv2d(self.num_channels, 32, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(self.num_channels, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=8, stride=8),
-            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=4, stride=4),
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=1, stride=1),
-            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(512),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=(2, 1)),
             nn.MaxPool2d(kernel_size=2, stride=(2, 2)),
@@ -57,11 +61,10 @@ class PolicyNetwork2UNet(nn.Module):
 
         # Combine the outputs of the image and vector branches
         self.final_fc = nn.Sequential(
-            nn.Linear(1024 + 512, 1024),
+            nn.Linear(2048, 1024),
             nn.Linear(1024, 512),
             nn.Linear(512, 256),
-            nn.Linear(256, 128),
-            nn.Linear(128, 64),
+            nn.Linear(256, 64),
             nn.Linear(64, self.output_size)
         )
         
