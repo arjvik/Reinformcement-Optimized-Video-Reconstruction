@@ -24,9 +24,6 @@ from pathlib import Path
 
 from GPUtil import showUtilization as gpu_usage, getAvailable
 
-import torch.multiprocessing
-torch.multiprocessing.set_sharing_strategy('file_system')
-
 def clamp(x, a, b): return x if a <= x <= b else (a if a > x else b)
 
 def load_video_dataset(root_folder, num_workers):
@@ -62,22 +59,25 @@ video_encoder = parallel_and_device(video_encoder, device)
 mse_loss_fn = torch.nn.MSELoss().to(device)
 lpips_loss_fn = lpips.LPIPS(net='vgg').to(device)
 
-path = Path('runs') / 'warm_start' / 'pn2_newshape' / 'immitation_learning' / time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
+path = Path('runs') / 'warm_start' / 'pn2' / 'immitation_learning_gradcontr:1.5' / time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
 (path / 'checkpoints').mkdir(parents=True)
 
 writer = SummaryWriter(log_dir=path, flush_secs=10)
 
 for epoch, (video, _, masks, positive, negative) in enumerate(tqdm(cycle(ds))):
-    encoded_frames = video_encoder.resnet(torch.stack([video_encoder.preprocessing(f) for f in video], dim=0).to(device)).squeeze(2).squeeze(2)
-    outputs = pn2.get_raw_probs(encoded_frames, video.to(device), torch.arange(20).unsqueeze(1).to(device), device=device)
+    encoded_frames = video_encoder(torch.stack([video_encoder.preprocessing(f) for f in video], dim=0).to(device).unsqueeze(0))#.squeeze(2).squeeze(2)
+    print("ENCODED FRAMES SHAPE", encoded_frames.shape)
+    encoded_frames = torch.stack([encoded_frames]*20, dim = 0).squeeze(1)
+    print("STACKED ENCODED FRAMES SHAPE", encoded_frames.shape)
+    outputs = pn2(encoded_frames, video.to(device), torch.arange(20).unsqueeze(1).to(device), extra = True).sigmoid()
     loss = torch.tensor(0).float().to(device)
     for i in range(positive.shape[1]):
-        ans = F.one_hot(pn2.indices_to_index(positive[:, i, 0], positive[:, i, 1], device=device).to(torch.int64), num_classes=pn2.output_size)
-        loss += F.binary_cross_entropy(outputs, ans.float().to(device))
+        ans = torch.nn.functional.one_hot(positive[:, i].to(torch.int64), num_classes=20).sum(dim=1)
+        loss += torch.nn.functional.binary_cross_entropy(outputs, ans.float().to(device)) * 1.5 # play with gradient contribution
     for i in range(negative.shape[1]):
-        ans = F.one_hot(pn2.indices_to_index(negative[:, i, 0], negative[:, i, 1], device=device).to(torch.int64), num_classes=pn2.output_size)
-        loss -= F.binary_cross_entropy(outputs, ans.float().to(device))
-    writer.add_scalar('Loss/expert_loss', (loss / positive.shape[1]).detach(), epoch)
+        ans = torch.nn.functional.one_hot(negative[:, i].to(torch.int64), num_classes=20).sum(dim=1)
+        loss -= torch.nn.functional.binary_cross_entropy(outputs, ans.float().to(device))
+    writer.add_scalar('Loss/expert_loss', loss.detach(), epoch)
     pn2_optimizer.zero_grad()
     loss.backward()
     pn2_optimizer.step()

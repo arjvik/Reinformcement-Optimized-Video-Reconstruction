@@ -27,19 +27,18 @@ class ROVR(nn.Module):
         print("INIT")
         
         video_encoder = ResnetFeatureExtractor(pretrained = True)
-        actor1 = PolicyNetwork1UNet()
         actor2 = PolicyNetwork2UNet()
         history_encoder = ActionLSTM(hidden_dim = 1024, num_layers = 1, batch_size = 1)
         # local_net = LocalNetwork()
-        critic1 = PolicyNetwork1UNet(is_critic = True)
         critic2 = PolicyNetwork2UNet(is_critic = True)
         
         local_net = LocalNetworkUNetNorm(freeze = True)
         checkpoint = torch.load("runs/local_net/unet_mse/2023-06-06_11-31-21/checkpoints/98000.pt")
         local_net.load_state_dict(checkpoint['model_state_dict'])
         
-        self.actor1 = actor1
-        self.critic1 = critic1
+        checkpoint = torch.load("runs/warm_start/pn2/immitation_learning/2023-06-09_05-08-40/checkpoints/741000.pt")
+        actor2.load_state_dict(checkpoint['model_state_dict'])
+        
         self.actor2 = actor2
         self.critic2 = critic2
         self.local_net = local_net
@@ -54,15 +53,11 @@ class ROVR(nn.Module):
         self.local_mse = torch.nn.MSELoss()
         self.video_encoder = video_encoder
         self.history_encoder = history_encoder
-
-        self.actor1_optimizer = torch.optim.Adam(self.actor1.parameters(), lr=1e-4)
-        self.critic1_optimizer = torch.optim.Adam(self.critic1.parameters(), lr=1e-4)
-        self.actor2_optimizer = torch.optim.Adam(chain(self.actor2.parameters(), self.history_encoder.parameters()), lr=1e-4)
         self.critic2_optimizer = torch.optim.Adam(self.critic2.parameters(), lr=1e-4)
         self.local_net_optimizer = torch.optim.Adam(self.local_net.parameters(), lr=1e-4)
 
 
-        self.tensorboard_path = Path('runs') / 'rovr' / 'unet' / time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
+        self.tensorboard_path = Path('runs') / 'rovr' / 'warm_started_pn2' / time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())
         (self.tensorboard_path / 'checkpoints').mkdir(parents=True)
         self.writer = SummaryWriter(log_dir=self.tensorboard_path, flush_secs=10)
 
@@ -75,7 +70,7 @@ class ROVR(nn.Module):
         print("Starting PPO on 2!")
         self.ppo(2, (obs_2, acs_2, log_prob_2, rtg), i, device)
         print("Starting PPO on 1!")
-        self.ppo(1, (obs_1, acs_1, log_prob_1, rtg), i, device)
+        # self.ppo(1, (obs_1, acs_1, log_prob_1, rtg), i, device)
         
         return optical_flow_by_frame, exp_optical_flow_by_frame, org_optical_flow_by_frame, corrupted_optical_flow_by_frame
 
@@ -109,21 +104,22 @@ class ROVR(nn.Module):
                         
             for j in tqdm(range(self.time_steps)):
 
-                pn_1_top_frame, pn_1_log_prob = self.actor1(encoded_frames, lstm_token)
+#                 pn_1_top_frame, pn_1_log_prob = self.actor1(encoded_frames, lstm_token)
                 
-                # print("PN 1 Log Prob", pn_1_log_prob)
+#                 # print("PN 1 Log Prob", pn_1_log_prob)
 
-                obs_1.append((encoded_frames.detach(), lstm_token.detach()))
-                acs_1.append(pn_1_top_frame)
-                log_prob_1.append(pn_1_log_prob)
+#                 obs_1.append((encoded_frames.detach(), lstm_token.detach()))
+#                 acs_1.append(pn_1_top_frame)
+#                 log_prob_1.append(pn_1_log_prob)
 
-                pn_1_top_frame = pn_1_top_frame.unsqueeze(0)
+#                 pn_1_top_frame = pn_1_top_frame.unsqueeze(0)
 
-                target_frame_index = pn_1_top_frame.item()
+#                 target_frame_index = pn_1_top_frame.item()
+                target_frame_index = j
 
                 target_frame = video[:, target_frame_index, :, :, :]
 
-                pn_2_top_frames, pn_2_log_prob = self.actor2(encoded_frames.float(), target_frame.float(), pn_1_top_frame)
+                pn_2_top_frames, pn_2_log_prob = self.actor2(encoded_frames.float(), target_frame.float(), torch.tensor(target_frame))
                 
                 # print("       PN 2 Log Prob", pn_2_log_prob)
 
@@ -194,11 +190,11 @@ class ROVR(nn.Module):
                 self.writer.add_image('Local_Net/Viz', display.detach(), i)
             
             #stack all of our lists
-            obs_1 = (torch.stack([obs[0] for obs in obs_1]).squeeze(), torch.stack([obs[1] for obs in obs_1]).squeeze())
+            # obs_1 = (torch.stack([obs[0] for obs in obs_1]).squeeze(), torch.stack([obs[1] for obs in obs_1]).squeeze())
             obs_2 = (torch.stack([obs[0] for obs in obs_2]).squeeze(), torch.stack([obs[1] for obs in obs_2]).squeeze(), torch.stack([obs[2] for obs in obs_2]).squeeze().unsqueeze(-1))
-            acs_1 = torch.stack(acs_1).squeeze()
+            # acs_1 = torch.stack(acs_1).squeeze()
             acs_2 = torch.stack(acs_2).squeeze()
-            log_prob_1 = torch.stack(log_prob_1)
+            # log_prob_1 = torch.stack(log_prob_1)
             log_prob_2 = torch.stack(log_prob_2)
 
             optical_flow, optical_flow_by_frame = self.calculate_optical_flow(reconstructed_video.squeeze(0).float())
@@ -256,19 +252,19 @@ class ROVR(nn.Module):
     #this function runs ppo on the selected network
     def ppo(self, net_num, info, i, device):                                                                
         if net_num == 1:
-            actor = self.actor1
-            critic = self.critic1
-            actor_optim = self.actor1_optimizer
-            critic_optim = self.critic1_optimizer
+            raise Exception("Should not be here now thta we deleted actor1")
+            # actor = self.actor1
+            # critic = self.critic1
+            # actor_optim = self.actor1_optimizer
+            # critic_optim = self.critic1_optimizer
 
         elif net_num == 2:
             actor = self.actor2
             critic = self.critic2
-            actor_optim = self.actor2_optimizer
+            # actor_optim = self.actor2_optimizer
             critic_optim = self.critic2_optimizer
         else:
             raise Exception("no bad")
-        
 
         obs, acs, log_prob, rtgs = info
         # print("BEFORE CRITIC", torch.cuda.memory_allocated(device)/(1024 ** 3))
@@ -279,7 +275,7 @@ class ROVR(nn.Module):
         A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
         print(f"{V.detach()[:3]=}")
         # print(f"{log_prob.shape=}")
-        
+
 
         for j in range(self.num_updates_per_ppo): 
             # print(j, torch.cuda.memory_allocated(device)/(1024 ** 3))
@@ -289,7 +285,7 @@ class ROVR(nn.Module):
             # print(f"{curr_log_prob.shape=}")
             ratio = torch.exp(curr_log_prob - log_prob)
             # print(f"{(ratio>0)[:3]=}")
-            
+
             # print(f"{A_k.requires_grad=}, {rtgs.requires_grad=}, {obs.requires_grad=}")
 
             L1 = ratio * A_k
@@ -299,16 +295,15 @@ class ROVR(nn.Module):
             # print(f"{rtgs[:3]=}")
             actor_loss = -torch.min(L1, L2).mean()
             critic_loss = torch.nn.MSELoss()(V, rtgs.squeeze(1))
-            
+
             critic_optim.zero_grad()
-            critic_loss.backward(retain_graph = True)
-            
-            actor_optim.zero_grad()
-            actor_loss.backward()
-            actor_optim.step()
-
-
+            # critic_loss.backward(retain_graph = True)
+            critic_loss.backward()
             critic_optim.step()
+
+            # actor_optim.zero_grad()
+            # actor_loss.backward()
+            # actor_optim.step()
 
             self.writer.add_scalar(f'PPO/actor_{net_num}_loss', actor_loss.detach(), self.num_updates_per_ppo*i + j)
             self.writer.add_scalar(f'PPO/critic_{net_num}_loss', critic_loss.detach(), self.num_updates_per_ppo*i + j)

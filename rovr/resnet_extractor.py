@@ -2,10 +2,11 @@ import torch
 import torchvision.models as models
 import torchvision.transforms as transforms
 
-class  ResnetFeatureExtractor(torch.nn.Module):
+class ResnetFeatureExtractor(torch.nn.Module):
     def __init__(self, pretrained=False):
         super().__init__()
         self.resnet = models.resnet50(pretrained=pretrained)
+        self.linear = torch.nn.Linear(2048, 16*16*3) # learnable linear layer to project features
 
         if pretrained:
             self.resnet.eval()
@@ -42,6 +43,7 @@ class  ResnetFeatureExtractor(torch.nn.Module):
         local_device = x.device
         x = self.preprocessing(x).unsqueeze(0).to(local_device)
         feature = self.resnet(x)
+        feature = self.linear(feature.view(-1)).view(3, 16, 16)  # change to channel first
         return feature
 
     def insert_encoded_frame_batch(self, indices, full_frame_batch, encoded_frame_batch):
@@ -51,8 +53,6 @@ class  ResnetFeatureExtractor(torch.nn.Module):
             idx = self.calculate_index(indices[b])  # Calculate the index for each batch
             encoded_frame_batch[b, :, idx[0]:idx[0]+16, idx[1]:idx[1]+16] = encoded_frame  # Insert it into the encoded_frame_batch at the correct spot
         return encoded_frame_batch
-
-
 
     def extract_patch(self, indices, feature_map):
         local_device = feature_map.device

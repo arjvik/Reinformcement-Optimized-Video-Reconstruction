@@ -10,8 +10,8 @@ import argparse
 
 # Argument Parsing
 parser = argparse.ArgumentParser()
-parser.add_argument('--vid_length', default=25, type=int, help="Length of the video")
-parser.add_argument('--time_steps', default=25, type=int, help="Number of time steps")
+parser.add_argument('--vid_length', default=20, type=int, help="Length of the video")
+parser.add_argument('--time_steps', default=20, type=int, help="Number of time steps")
 parser.add_argument('--n_updates_per_ppo', default=5, type=int, help="Number of updates per PPO")
 args = parser.parse_args()
 

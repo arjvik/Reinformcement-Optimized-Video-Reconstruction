@@ -31,7 +31,7 @@ class VideoDatasetExplicit(Dataset):
             [f[18], f[19]]
         ]
     def __len__(self):
-        return 10 if 'DEBUG_SHORT_DATASET' in os.environ else (len(self.subfolders) * 2 * 2) # each folder corresponds to two videos, each video is split into two videos temporally
+        return 10 if 'DEBUG_SHORT_DATASET' in os.environ else len(self.subfolders) * 2 # each folder corresponds to two videos
 
     def corrupt_mask(self, frame, frame_index, mask):
         h, w, _ = frame.shape
@@ -72,7 +72,7 @@ class VideoDatasetExplicit(Dataset):
 
 
     def __getitem__(self, idx):
-        subfolder = self.subfolders[idx // 4]
+        subfolder = self.subfolders[idx // 2]
         video_folder = os.path.join(self.root_folder, subfolder)
         frames = sorted(os.listdir(video_folder))
 
@@ -86,8 +86,8 @@ class VideoDatasetExplicit(Dataset):
         
         if (len(frames) != 50):
             print(f"ERROR {len(frames)=} {video_folder=}")
-        x = 0 if idx%4 < 2 else 1
-        for i in range(x, 40, 2):
+
+        for i in range(0, 40, 2):
             frame_path = os.path.join(video_folder, frames[self.f[i//2]])
             frame = cv2.imread(frame_path)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -131,65 +131,85 @@ class VideoDatasetExplicit(Dataset):
         neg_solutions = np.empty((20, 8, 2))
 
     def generate_solutions(self):
-        solutions = np.empty((20, 16, 2))
+        solutions = np.empty((20, 32, 2))
         for i in range(20):
             if i in self.helper[0]:
                 solutions[i] = np.concatenate((
-                    np.array([sorted([p, q]) for p in self.helper[2] for q in self.helper[5]]),
-                    np.array([sorted([p, q]) for p in self.helper[3] for q in self.helper[4]]), 
+                    np.array([[p, q] for p in self.helper[2] for q in self.helper[5]]),
+                    np.array([[p, q] for p in self.helper[3] for q in self.helper[4]]), 
+                    np.array([[q, p] for p in self.helper[2] for q in self.helper[5]]),
+                    np.array([[q, p] for p in self.helper[3] for q in self.helper[4]])
                     ), axis = 0)
             elif i in self.helper[1]:
                 solutions[i] = np.concatenate((
-                    np.array([sorted([p, q]) for p in self.helper[2] for q in self.helper[4]]),
-                    np.array([sorted([p, q]) for p in self.helper[3] for q in self.helper[4]]), 
+                    np.array([[p, q] for p in self.helper[2] for q in self.helper[4]]),
+                    np.array([[p, q] for p in self.helper[3] for q in self.helper[4]]), 
+                    np.array([[q, p] for p in self.helper[2] for q in self.helper[4]]),
+                    np.array([[q, p] for p in self.helper[3] for q in self.helper[4]])
                     ), axis = 0)
             elif i in self.helper[2]:
                 solutions[i] = np.concatenate((
-                    np.array([sorted([p, q]) for p in self.helper[0] for q in self.helper[5]]),
-                    np.array([sorted([p, q]) for p in self.helper[1] for q in self.helper[5]]), 
+                    np.array([[p, q] for p in self.helper[0] for q in self.helper[5]]),
+                    np.array([[p, q] for p in self.helper[1] for q in self.helper[5]]), 
+                    np.array([[q, p] for p in self.helper[0] for q in self.helper[5]]),
+                    np.array([[q, p] for p in self.helper[1] for q in self.helper[5]])
                     ), axis = 0)
             elif i in self.helper[3]:
                 solutions[i] = np.concatenate((
-                    np.array([sorted([p, q]) for p in self.helper[0] for q in self.helper[5]]),
-                    np.array([sorted([p, q]) for p in self.helper[1] for q in self.helper[4]]), 
+                    np.array([[p, q] for p in self.helper[0] for q in self.helper[5]]),
+                    np.array([[p, q] for p in self.helper[1] for q in self.helper[4]]), 
+                    np.array([[q, p] for p in self.helper[0] for q in self.helper[5]]),
+                    np.array([[q, p] for p in self.helper[1] for q in self.helper[4]])
                     ), axis = 0)
             elif i in self.helper[4]:
                 solutions[i] = np.concatenate((
-                    np.array([sorted([p, q]) for p in self.helper[1] for q in self.helper[2]]),
+                    np.array([[p, q] for p in self.helper[1] for q in self.helper[2]]),
+                    np.array([[q, p] for p in self.helper[1] for q in self.helper[2]]), 
                     ), axis = 0)
             elif i in self.helper[5]:
                 solutions[i] = np.concatenate((
-                    np.array([sorted([p, q]) for p in self.helper[0] for q in self.helper[2]]),
+                    np.array([[p, q] for p in self.helper[0] for q in self.helper[2]]),
+                    np.array([[q, p] for p in self.helper[0] for q in self.helper[2]]), 
                     ), axis = 0)
         return solutions
     
     def generate_negative_solutions(self):
-        neg_solutions = np.empty((20, 8, 2))
+        neg_solutions = np.empty((20, 16, 2))
         for i in range(20):
             for j in range(4):
                 if i in self.helper[j]:
                     temp = self.helper[j].copy()
                     temp.remove(i)
                     neg_solutions[i] = np.concatenate((
-                        np.array([  sorted([temp[0], temp[1]]),
-                                    sorted([temp[0], temp[2]]),
-                                    sorted([temp[1], temp[2]]),  ]),
-                        np.array([sorted([p, self.helper[(j+1)%4][l]]) for p in temp[:2] for l in range(2)]),
-                        np.array([sorted([temp[2], self.helper[(j+1)%4][0]])]),
+                        np.array([  [temp[0], temp[1]],
+                                    [temp[0], temp[2]],
+                                    [temp[1], temp[0]],
+                                    [temp[1], temp[2]],
+                                    [temp[2], temp[0]],
+                                    [temp[2], temp[1]],
+                                    ]),
+                        np.array([[p, self.helper[(i+1)%4][l]] for p in temp[:2] for l in range(2)]),
+                        np.array([[self.helper[(i+1)%4][l], p] for p in temp[:2] for l in range(2)]),
+                        np.array([[temp[2], self.helper[(i+1)%4][0]]]),
+                        np.array([[self.helper[(i+1)%4][0], temp[2]]]),
                         ), axis = 0)
             if i in self.helper[4]:
                 temp = self.helper[4].copy()
                 temp.remove(i)
                 neg_solutions[i] = np.concatenate((
-                    np.array([sorted([p, q]) for p in temp for q in self.helper[1]]),
-                    np.array([sorted([p, q]) for p in temp for q in self.helper[2]]),
+                    np.array([[p, q] for p in temp for q in self.helper[1]]),
+                    np.array([[q, p] for p in temp for q in self.helper[1]]),
+                    np.array([[p, q] for p in temp for q in self.helper[2]]),
+                    np.array([[q, p] for p in temp for q in self.helper[2]]) 
                     ), axis = 0)
             if i in self.helper[5]:
                 temp = self.helper[5].copy()
                 temp.remove(i)
                 neg_solutions[i] = np.concatenate((
-                    np.array([sorted([p, q]) for p in temp for q in self.helper[2]]),
-                    np.array([sorted([p, q]) for p in temp for q in self.helper[1]]),
+                    np.array([[p, q] for p in temp for q in self.helper[2]]),
+                    np.array([[q, p] for p in temp for q in self.helper[2]]), 
+                    np.array([[p, q] for p in temp for q in self.helper[1]]),
+                    np.array([[q, p] for p in temp for q in self.helper[1]])
                     ), axis = 0)
         return neg_solutions
         
