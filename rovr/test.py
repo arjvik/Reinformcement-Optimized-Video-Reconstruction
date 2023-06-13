@@ -85,7 +85,7 @@ for i, batch in enumerate(ds):
     
     # print("THIS IS OUR FLOW SHAPE", len(optical_flow))
     
-    if i % 50 == 0:
+    if i % 1 == 0:
         torch.save({
             'epoch': i,
             'model_state_dict': rover.state_dict(),

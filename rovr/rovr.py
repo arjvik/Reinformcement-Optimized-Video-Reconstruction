@@ -19,6 +19,7 @@ from itertools import chain
 from pathlib import Path
 import time
 from torch.utils.tensorboard.writer import SummaryWriter
+from matplotlib.patches import Patch
 
 
 class ROVR(nn.Module):
@@ -108,6 +109,9 @@ class ROVR(nn.Module):
             
             self.displays = []
             total_reward = 0
+            
+            total_mse = 0
+            total_lpips = 0
                         
             for j in tqdm(range(self.time_steps)):
 
@@ -167,7 +171,7 @@ class ROVR(nn.Module):
                 exp_total_context = torch.stack([exp_context_frame_1, exp_context_frame_2], dim = 1)
 
                 with torch.no_grad():
-                    exp_decorrupted_image, _ = self.train_local_network(cache_target_frame.float(), exp_total_context.float(), org_video[:, target_frame_index, :, :, :].float(), i, j)
+                    exp_decorrupted_image, lpips_loss, mse_loss = self.train_local_network(cache_target_frame.float(), exp_total_context.float(), org_video[:, target_frame_index, :, :, :].float(), i, j)
                 # End experiment
 
 
@@ -175,7 +179,7 @@ class ROVR(nn.Module):
                 #rewards are ~0-1 for perceptual loss
                 
                 
-                decorrupted_image, lpips_loss = self.train_local_network(cache_target_frame.float(), total_context.float(), org_video[:, target_frame_index, :, :, :].float(), i, j)
+                decorrupted_image, lpips_loss, mse_loss = self.train_local_network(cache_target_frame.float(), total_context.float(), org_video[:, target_frame_index, :, :, :].float(), i, j)
                 reward = lpips_loss
                 # print("Decorrupted Image Range", decorrupted_image.min(), decorrupted_image.max())
 
@@ -199,7 +203,11 @@ class ROVR(nn.Module):
                 total_reward = total_reward + -(reward - curr_loss[target_frame_index])
                 
                 curr_loss[target_frame_index] = reward
-            
+
+                
+                total_mse += mse_loss
+                total_lpips += lpips_loss
+                
             if i % 5 == 0:
                 display = torch.cat(self.displays, dim=1)
                 self.writer.add_image('Local_Net/Viz', display.detach(), i)
@@ -223,7 +231,7 @@ class ROVR(nn.Module):
             
             
             # spatio_loss = (abs(optical_flow - corrupted_optical_flow) - abs(org_optical_flow - optical_flow))/9000
-            spatio_loss = (1 - (abs(optical_flow - org_optical_flow) / abs(corrupted_optical_flow - org_optical_flow))) * 4
+            spatio_loss = (1 - (abs(optical_flow - org_optical_flow) / abs(corrupted_optical_flow - org_optical_flow)))*7.5 
             print("BIG BOY REWARD = ", spatio_loss)
             #increase distance from corrupted optical flow and decrease distance from original optical flow
             # rewards[-1] = rewards[-1] - spatio_loss
@@ -231,7 +239,8 @@ class ROVR(nn.Module):
             rtg = self.compute_rewards_to_go(rewards, local_device)
             #### IF WE GET DATAPARALLEL DEVICE ERROR THIS IS THE CULPRIT
             self.writer.add_scalar('Local_Net/spatio_loss', spatio_loss, i)
-
+            self.writer.add_scalar('Local_Net/mse_loss', total_mse / self.time_steps, i)
+            self.writer.add_scalar('Local_Net/lpips_loss', total_lpips / self.time_steps, i)
             
             #RESET LSTM STATES:
             # self.history_encoder.reset_hidden_states()
@@ -248,12 +257,12 @@ class ROVR(nn.Module):
         self.local_net_optimizer.zero_grad()
         # loss.backward()
         # self.local_net_optimizer.step()
-        self.writer.add_scalar('Local_Net/mse_loss', mse_loss.detach(), self.time_steps * i + j)
-        self.writer.add_scalar('Local_Net/lpips_loss', lpips_loss.detach(), self.time_steps * i + j)
+        # self.writer.add_scalar('Local_Net/mse_loss', mse_loss.detach(), self.time_steps * i + j)
+        # self.writer.add_scalar('Local_Net/lpips_loss', lpips_loss.detach(), self.time_steps * i + j)
         if i % 5 == 0:
             display = torch.cat([images, context1, context2, org_images, y_hat], dim=3).squeeze(0)
             self.displays.append(display.detach())
-        return y_hat, lpips_loss.detach()
+        return y_hat, lpips_loss.detach(), mse_loss.detach()
 
     #this function calculates rewards to go from marginal rewards
     def compute_rewards_to_go(self, rewards, device, gamma=1):
